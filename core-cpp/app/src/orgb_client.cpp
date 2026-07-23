@@ -352,6 +352,40 @@ void OrgbMirror::applyBuckets(const QList<QColor>& cols) {
     }
 }
 
+// Which bucket a globally-positioned LED samples when the strip is wrapped across all
+// devices. pos in [0,total) over the concatenated device LEDs; result in [0,nB).
+static inline int wrapBucket(int pos, int total, int nB) {
+    if (total <= 0 || nB <= 0) return 0;
+    int x = pos * nB / total;
+    return x < 0 ? 0 : (x >= nB ? nB - 1 : x);
+}
+
+void OrgbMirror::applyWrapped(const QList<QColor>& cols) {
+    if (!sock_ || cols.isEmpty() || sock_->state() != QAbstractSocket::ConnectedState) return;
+    const int nB = cols.size();
+    int total = 0;                                  // concatenated LED count of included devices
+    for (const Dev& d : devs_) if (included_.count(d.idx)) total += (d.ledN > 0 ? d.ledN : 1);
+    if (total <= 0) return;
+    int offset = 0;
+    for (const Dev& d : devs_) {
+        if (!included_.count(d.idx)) continue;
+        const int ledN = d.ledN > 0 ? d.ledN : 1;
+        if (d.type == 4 && !d.modeRaw.isEmpty()) {  // cooler: single colour = average of its slice
+            long r = 0, g = 0, b = 0;
+            for (int j = 0; j < ledN; ++j) { const QColor& c = cols[wrapBucket(offset + j, total, nB)]; r += c.red(); g += c.green(); b += c.blue(); }
+            driveDevice(*sock_, d, ver_, QColor(int(r / ledN), int(g / ledN), int(b / ledN)));
+        } else {
+            QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
+            for (int j = 0; j < d.ledN; ++j) {
+                const QColor& c = cols[wrapBucket(offset + j, total, nB)];
+                put32(up, quint32(c.red()) | (quint32(c.green()) << 8) | (quint32(c.blue()) << 16));
+            }
+            sendPacket(*sock_, quint32(d.idx), CMD_UPDATE_LEDS, up);
+        }
+        offset += ledN;
+    }
+}
+
 int OrgbClient::setAllColor(const QString& host, quint16 port, const QColor& color, QString* error) {
     quint32 ver; QTcpSocket* s = connectHandshake(host, port, ver, error);
     if (!s) return -1;

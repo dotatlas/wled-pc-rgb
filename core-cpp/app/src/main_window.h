@@ -62,6 +62,7 @@ private:
     QSlider* floor_   = nullptr;
     QPushButton* mirBtn_ = nullptr;
     QCheckBox*   spreadChk_ = nullptr;
+    QCheckBox*   wrapChk_   = nullptr;
     QCheckBox*   autoMirrorChk_ = nullptr;
     QCheckBox*   autostartChk_  = nullptr;
     QCheckBox*   startMinChk_   = nullptr;
@@ -71,7 +72,7 @@ private:
     IpcClient*  ipc_ = nullptr;
     QProcess*   backend_ = nullptr;
     OrgbMirror  mirror_;
-    bool  mirroring_ = false, spread_ = false, building_ = false, stopping_ = false;
+    bool  mirroring_ = false, spread_ = false, wrap_ = false, building_ = false, stopping_ = false;
     bool  openrgbReady_ = false, backendUp_ = false, wledReachable_ = false, wledOn_ = true;
     int   zeroRetries_ = 0, backendFails_ = 0, backendDelayMs_ = 1500;
     QColor wledColour_;

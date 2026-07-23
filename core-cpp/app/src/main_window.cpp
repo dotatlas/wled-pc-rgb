@@ -236,15 +236,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* rescan = new QPushButton("Rescan", adv);
     auto* maxZ   = new QPushButton(QString("Size zones (%1)").arg(kDefaultZoneLeds), adv);
     auto* setMod = new QPushButton("Set selected mode", adv);
-    spreadChk_   = new QCheckBox("Spread across LEDs", adv);
+    spreadChk_   = new QCheckBox("Spread (whole strip per device)", adv);
     spread_ = s.value("mirror/spread", false).toBool();
     spreadChk_->setChecked(spread_);
+    spreadChk_->setToolTip("Each device stretches the ENTIRE WLED strip across its own LEDs.");
+    wrapChk_     = new QCheckBox("Wrap (strip across all devices)", adv);
+    wrap_ = s.value("mirror/wrap", false).toBool();
+    wrapChk_->setChecked(wrap_);
+    wrapChk_->setToolTip("Distribute the WLED strip ONCE across all ticked devices in sequence, "
+                         "so the colour flows from one device to the next.");
     ag->addWidget(rescan); ag->addWidget(maxZ); ag->addWidget(setMod);
-    ag->addWidget(spreadChk_); ag->addStretch(1);
+    ag->addWidget(spreadChk_); ag->addWidget(wrapChk_); ag->addStretch(1);
     connect(adv, &QGroupBox::toggled, this, [rescan, maxZ, setMod, this](bool on){
-        rescan->setVisible(on); maxZ->setVisible(on); setMod->setVisible(on); spreadChk_->setVisible(on);
+        rescan->setVisible(on); maxZ->setVisible(on); setMod->setVisible(on);
+        spreadChk_->setVisible(on); wrapChk_->setVisible(on);
     });
-    rescan->setVisible(false); maxZ->setVisible(false); setMod->setVisible(false); spreadChk_->setVisible(false);
+    rescan->setVisible(false); maxZ->setVisible(false); setMod->setVisible(false);
+    spreadChk_->setVisible(false); wrapChk_->setVisible(false);
 
     // --- options group --------------------------------------------------------
     auto* opts = new QGroupBox("Options", central);
@@ -276,7 +284,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(rescan, &QPushButton::clicked, this, &MainWindow::refresh);
     connect(maxZ,   &QPushButton::clicked, this, &MainWindow::maxZones);
     connect(setMod, &QPushButton::clicked, this, &MainWindow::setSelectedMode);
-    connect(spreadChk_, &QCheckBox::toggled, this, [this](bool on){ spread_ = on; QSettings().setValue("mirror/spread", on); });
+    connect(spreadChk_, &QCheckBox::toggled, this, [this](bool on){
+        spread_ = on; QSettings().setValue("mirror/spread", on);
+        if (on && wrapChk_->isChecked()) wrapChk_->setChecked(false);   // spread & wrap are mutually exclusive
+    });
+    connect(wrapChk_, &QCheckBox::toggled, this, [this](bool on){
+        wrap_ = on; QSettings().setValue("mirror/wrap", on);
+        if (on && spreadChk_->isChecked()) spreadChk_->setChecked(false);
+    });
     connect(applyHost, &QPushButton::clicked, this, &MainWindow::connectHostFromField);
     connect(hostEdit_, &QLineEdit::returnPressed, this, &MainWindow::connectHostFromField);
     connect(autoMirrorChk_, &QCheckBox::toggled, this, [](bool on){ QSettings().setValue("opts/autoMirror", on); });
@@ -341,10 +356,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         }
         if (!mirror_.alive()) { status_->setText("Reconnecting to OpenRGB…"); return; }
 
-        if (spread_) {
+        if (wrap_ || spread_) {
             QList<QColor> sc; sc.reserve(cols.size());
             for (const QColor& c : cols) sc.push_back(mapColor(c, b, g, fl));
-            mirror_.applyBuckets(sc);
+            if (wrap_) mirror_.applyWrapped(sc); else mirror_.applyBuckets(sc);
         } else {
             mirror_.apply(mapColor(avg, b, g, fl));
         }

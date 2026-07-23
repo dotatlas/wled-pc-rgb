@@ -58,7 +58,7 @@ public class WledBackend {
     static volatile long      lastSacnMs    = 0;
     // ACN packet identifier "ASC-E1.17\0\0\0" — bytes 4..15 of every E1.31 packet.
     static final byte[] ACN_ID = {0x41,0x53,0x43,0x2d,0x45,0x31,0x2e,0x31,0x37,0x00,0x00,0x00};
-    static final int NB = 16;
+    static final int NB = 64;   // strip buckets sent per frame (finer = smoother spread/wrap)
     static volatile String wledHost = "wled.local";
     static HttpClient http;
 

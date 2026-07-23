@@ -34,8 +34,9 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.19 | 1.0 | Portable self-contained release (package-win.ps1 → versioned zip) + Inno Setup installer script + full usage/troubleshooting guide (docs/USAGE.md) | ✅ done |
 | v0.20 | 4+ | Mirror tone controls: Flash gain (1–5× multiplier so dim WLED flashes read brighter) + Min brightness floor (hue-preserving, never-off baseline). All three sliders persist | ✅ done |
 | v0.21 | 4 | E1.31/sACN tap (backend UDP 5568, unicast + multicast universe 1) — completes Phase 4 protocol coverage; auto-selects alongside DDP/live-view | ✅ done |
-| v0.22 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) — deferred (ring already mirrors via OpenRGB Static) | |
-| v0.23 | 5 | Kraken Elite LCD — static sensor screen → looping GIF — deferred (needs manual Zadig/WinUSB driver swap) | |
+| v0.22 | 4 | Positional mapping: Wrap mode (strip distributed once across all devices in sequence) beside Spread (whole strip per device); buckets 16→64 for smoother gradients | ✅ done |
+| v0.23 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) — deferred (ring already mirrors via OpenRGB Static) | |
+| v0.24 | 5 | Kraken Elite LCD — static sensor screen → looping GIF — deferred (needs manual Zadig/WinUSB driver swap) | |
 | **v1.0** | — | Release: code-sign the exe/installer + publish (needs a signing cert + Inno Setup installed) | |
 
 ---
@@ -91,7 +92,9 @@ Goal: tighter audio-reactivity and richer mapping. Optional.
 - [x] DDP sniffer tap for the LedFx case ✓ (v0.18): backend listens on UDP 4048, decodes DDP → avg + 16 buckets
 - [x] E1.31/sACN tap ✓ (v0.21): backend listens on UDP 5568 (unicast + multicast universe 1), decodes E1.31 data packets → avg + 16 buckets
 - [x] Auto-select tap ✓ (v0.18/v0.21): live-view is the default; DDP or sACN wins for 1500ms whenever their frames arrive
-- [ ] Mapping editor UI (assign strip regions to device zones) — Spread (16 buckets) is the interim
+- [x] Positional mapping ✓ (v0.10 Spread, v0.22 Wrap): Spread = whole strip per device; Wrap = strip
+      distributed once across all devices in sequence (64 buckets). A free-form per-zone region editor
+      remains possible but Wrap/Spread cover the practical cases without a fragile per-device UI.
 - [ ] (Optional) in-house WASAPI+FFT fallback if running without LedFx
 - [~] **Exit:** low-latency audio-reactive PC mirror when LedFx streams DDP or E1.31/sACN to this PC ✓; richer mapping pending
 

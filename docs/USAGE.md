@@ -53,9 +53,15 @@ Close the window and the app keeps running in the **tray** (right-click → Show
   **UDP 5568** (unicast to this PC, or multicast universe 1). The app uses whichever tap is
   streaming and falls back to the WLED live-view otherwise. No setting to flip; it
   auto-selects, and the WLED dot shows the active source (live / ddp / sacn).
-- **Spread across LEDs** (Advanced → *Spread across LEDs*) — instead of one average
-  colour, WLED's strip is split into 16 buckets and stretched across each device's LEDs,
-  so gradients/chases show positionally.
+- **Positional mapping** (Advanced) — instead of one average colour, WLED's strip is
+  split into fine buckets so gradients/chases show up spatially. Two modes:
+    - **Spread (whole strip per device)** — every device stretches the *entire* WLED
+      strip across its own LEDs, so each device shows the full gradient.
+    - **Wrap (strip across all devices)** — the WLED strip is distributed *once* across
+      all ticked devices in sequence, so the colour flows from one device to the next
+      (e.g. GPU → fans → Kraken ring → mouse) as one continuous surface. The Kraken ring
+      shows the average of its slice.
+  The two are mutually exclusive; leave both off for a single average colour everywhere.
 - **PC brightness** — the slider is a **PC-only** scaler. It dims the mirrored colour on
   your hardware and never changes WLED's brightness.
 - **Flash gain** (1.0×–5.0×) — a multiplier for when WLED's flashes are too dim on the PC.

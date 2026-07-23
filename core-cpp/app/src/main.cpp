@@ -1,4 +1,4 @@
-// wled-pc-rgb — v0.21: the WLED mirror.
+// wled-pc-rgb — v0.22: the WLED mirror.
 // The window (MainWindow) owns the tray, the setup strip, the device list and all
 // persisted settings. main() keeps the headless CLI helpers, the single-instance
 // guard, and the start-minimised behaviour.
@@ -22,7 +22,7 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     app.setApplicationName("wled-pc-rgb");
-    app.setApplicationVersion("0.21");
+    app.setApplicationVersion("0.22");
     app.setOrganizationName("wled-pc-rgb");
     app.setQuitOnLastWindowClosed(false);   // closing the window hides to tray
 
@@ -46,14 +46,15 @@ int main(int argc, char** argv)
     if (args.indexOf("--maxzones") > 0) {                                      // resize all resizable zones to the default
         QString e; return OrgbClient::resizeZones("127.0.0.1", 6742, 24, false, &e) >= 0 ? 0 : 2;
     }
-    if (int i = args.indexOf("--mirror"); i > 0) {                             // --mirror [seconds] [spread]
+    if (int i = args.indexOf("--mirror"); i > 0) {                             // --mirror [seconds] [spread|wrap]
         const int secs = (i + 1 < args.size()) ? args[i+1].toInt() : 5;
         const bool spread = args.contains("spread");
+        const bool wrap   = args.contains("wrap");
         OrgbMirror mir; QString e;
         if (!mir.open("127.0.0.1", 6742, &e)) return 2;
         IpcClient ipc;
-        QObject::connect(&ipc, &IpcClient::frame, &app, [&mir, spread](const QColor& c, const QList<QColor>& cols){
-            if (spread) mir.applyBuckets(cols); else mir.apply(c);
+        QObject::connect(&ipc, &IpcClient::frame, &app, [&mir, spread, wrap](const QColor& c, const QList<QColor>& cols){
+            if (wrap) mir.applyWrapped(cols); else if (spread) mir.applyBuckets(cols); else mir.apply(c);
         });
         ipc.start(47900);
         QTimer::singleShot(secs * 1000, &app, &QCoreApplication::quit);

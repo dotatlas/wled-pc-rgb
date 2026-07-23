@@ -56,7 +56,8 @@ public:
     bool open(const QString& host, quint16 port, QString* error);  // caches eligible devices (leds>0, not DRAM)
     void setIncluded(const QList<int>& deviceIndices);             // which detected devices to actually drive
     void apply(const QColor& color);
-    void applyBuckets(const QList<QColor>& cols);   // stretch buckets across each device's LEDs
+    void applyBuckets(const QList<QColor>& cols);   // stretch the whole strip across EACH device's LEDs
+    void applyWrapped(const QList<QColor>& cols);    // distribute the strip ONCE across all devices in sequence
     void close();
     bool isOpen() const { return sock_ != nullptr; }
     bool alive() const;                              // socket connected?
