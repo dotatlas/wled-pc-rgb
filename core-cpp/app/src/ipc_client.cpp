@@ -50,10 +50,10 @@ void IpcClient::onLine(const QByteArray& line) {
     }
 }
 
-void IpcClient::sendWledColor(const QColor& c, bool on) {
+void IpcClient::sendWledColor(const QColor& c, bool /*on*/) {
     if (sock_->state() != QAbstractSocket::ConnectedState) return;
-    const QString msg = QString("{\"type\":\"wled\",\"on\":%1,\"color\":\"%2\"}\n")
-                            .arg(on ? "true" : "false", c.name());
+    // Colour only — never power or brightness, so WLED's own brightness is untouched.
+    const QString msg = QString("{\"type\":\"wled\",\"color\":\"%1\"}\n").arg(c.name());
     sock_->write(msg.toUtf8());
     sock_->flush();
 }

@@ -35,3 +35,11 @@ if(WIN32)
         VERBATIM
         COMMENT "deploy-win: bundling Qt + full MinGW DLL closure (standalone exe)")
 endif()
+
+# Bundle the Java backend next to the exe so the app can auto-launch it.
+add_custom_command(TARGET wled_pc_rgb POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../wled-backend-java/backend/WledBackend.java"
+            "$<TARGET_FILE_DIR:wled_pc_rgb>/WledBackend.java"
+    VERBATIM
+    COMMENT "Bundling WledBackend.java next to the app")

@@ -1,5 +1,5 @@
-// MainWindow — device inspector + colour/mode/brightness control + motherboard
-// panel + live WLED status (via the Java backend over IPC).
+// MainWindow — device inspector + colour/mode control + motherboard panel +
+// live WLED mirroring (via the auto-launched Java backend over IPC).
 #pragma once
 #include <QMainWindow>
 #include <QColor>
@@ -9,6 +9,7 @@
 class QTreeWidget;
 class QLabel;
 class QSlider;
+class QProcess;
 class IpcClient;
 
 class MainWindow : public QMainWindow {
@@ -18,23 +19,27 @@ public:
 
 public slots:
     void refresh();
-    void setSelectedColor();
+    void setSelectedColor();   // colour (× PC brightness) → selected device
     void setSelectedMode();
-    void setAllColor();
-    void setRoomColor();       // colour → WLED (via the Java backend)
-    void maxZones();           // resize all resizable zones to their max (light everything)
+    void setAllColor();        // colour (× PC brightness) → every device
+    void setWledColor();       // colour → WLED (colour only; WLED brightness untouched)
+    void maxZones();
 
 private:
-    QColor pickColour();
-    QTreeWidget* tree_   = nullptr;
-    QLabel*      status_ = nullptr;
-    QLabel*      mobo_   = nullptr;
-    QLabel*      wled_   = nullptr;
-    QSlider*     bright_ = nullptr;
-    IpcClient*   ipc_    = nullptr;
+    QColor pickColour();       // raw colour from the dialog (PC brightness applied per use)
+    void   startBackend();     // auto-launch + supervise the Java WLED backend
+
+    QTreeWidget* tree_    = nullptr;
+    QLabel*      status_  = nullptr;
+    QLabel*      mobo_    = nullptr;
+    QLabel*      wled_    = nullptr;
+    QSlider*     bright_  = nullptr;   // PC-only brightness scaler
+    IpcClient*   ipc_     = nullptr;
+    QProcess*    backend_ = nullptr;
     OrgbMirror   mirror_;
     bool         mirroring_ = false;
-    bool         spread_ = false;
-    QColor       room_;
+    bool         spread_    = false;
+    bool         stopping_  = false;
+    QColor       wledColour_;
     QString      baseTitle_ = "wled-pc-rgb";
 };
