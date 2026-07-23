@@ -1,0 +1,4 @@
+# Let Git normalize line endings by default...
+* text=auto
+# ...but keep shell scripts LF so MSYS2 / Git-Bash executes them on Windows.
+*.sh text eol=lf
