@@ -22,6 +22,7 @@ public slots:
     void setSelectedMode();
     void setAllColor();
     void setRoomColor();       // colour → WLED (via the Java backend)
+    void maxZones();           // resize all resizable zones to their max (light everything)
 
 private:
     QColor pickColour();

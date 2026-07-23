@@ -13,7 +13,7 @@
 class QTcpSocket;
 
 struct OrgbLed  { QString name; QColor color; };
-struct OrgbZone { QString name; int ledCount = 0; };
+struct OrgbZone { QString name; int ledCount = 0; int ledsMin = 0; int ledsMax = 0; };
 struct OrgbMode { QString name; QByteArray raw; };   // raw = the mode's exact bytes, replayed to switch
 struct OrgbDevice {
     QString name;
@@ -38,6 +38,11 @@ public:
 
     // Set every device that has LEDs to `color`. Returns how many were set, or -1 on connect failure.
     static int setAllColor(const QString& host, quint16 port, const QColor& color, QString* error);
+
+    // Resize every resizable zone toward `target` LEDs (clamped to each zone's max).
+    // If onlyZero, only touch zones currently at 0 (fixes sizes wiped by an OpenRGB
+    // restart). Returns how many zones were resized, or -1 on connect failure.
+    static int resizeZones(const QString& host, quint16 port, int target, bool onlyZero, QString* error);
 };
 
 // A persistent OpenRGB connection for the live mirror: connect once, cache the

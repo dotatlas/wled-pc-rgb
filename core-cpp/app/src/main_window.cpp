@@ -26,6 +26,9 @@ constexpr int kDeviceIndexRole = Qt::UserRole + 1;
 constexpr int kModeIndexRole   = Qt::UserRole + 2;
 constexpr auto kHost = "127.0.0.1";
 constexpr quint16 kPort = 6742;
+constexpr int kDefaultZoneLeds = 24;    // resize target per zone (user's JARGB/Kraken = 24 each);
+                                        // clamped to each zone's max. NOT max — max over-allocates
+                                        // (960/1720 LEDs here) which bloats updates / can overload devices.
 QColor scale(const QColor& c, int pct) { return QColor(c.red()*pct/100, c.green()*pct/100, c.blue()*pct/100); }
 }
 
@@ -72,8 +75,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* mirBtn  = new QPushButton("Mirror room", central);
     mirBtn->setCheckable(true);
     auto* spreadChk = new QCheckBox("Spread", central);
+    auto* maxZ = new QPushButton("Size zones (24)", central);
     btn->addWidget(rescan); btn->addWidget(setCol); btn->addWidget(setMod); btn->addWidget(setAll);
-    btn->addWidget(setRoom); btn->addWidget(mirBtn); btn->addWidget(spreadChk);
+    btn->addWidget(setRoom); btn->addWidget(maxZ); btn->addWidget(mirBtn); btn->addWidget(spreadChk);
     btn->addStretch(1);
 
     layout->addWidget(mobo_);
@@ -90,6 +94,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(setMod, &QPushButton::clicked, this, &MainWindow::setSelectedMode);
     connect(setAll, &QPushButton::clicked, this, &MainWindow::setAllColor);
     connect(setRoom, &QPushButton::clicked, this, &MainWindow::setRoomColor);
+    connect(maxZ, &QPushButton::clicked, this, &MainWindow::maxZones);
     refresh();
 
     // Java WLED backend (Phase 3): show its status + the room's live colour.
@@ -123,6 +128,7 @@ static QIcon swatch(const QColor& c) { QPixmap pm(14, 14); pm.fill(c); return QI
 
 void MainWindow::refresh() {
     tree_->clear();
+    OrgbClient::resizeZones(kHost, kPort, kDefaultZoneLeds, /*onlyZero*/true, nullptr);  // auto-fix wiped zones
     QString err;
     auto devices = OrgbClient::load(kHost, kPort, &err);
     if (!err.isEmpty()) {
@@ -170,6 +176,11 @@ void MainWindow::refresh() {
         for (const auto& d : devices) {
             out << "DEVICE: " << d.name << "  (active=" << d.activeMode << ", "
                 << d.leds.size() << " leds, first=" << (d.leds.empty() ? QString("-") : d.leds.front().color.name()) << ")\n";
+            for (int zi = 0; zi < int(d.zones.size()); ++zi) {
+                const auto& z = d.zones[size_t(zi)];
+                out << "   ZONE " << zi << ": " << z.name << "  min=" << z.ledsMin
+                    << " max=" << z.ledsMax << " count=" << z.ledCount << "\n";
+            }
             QStringList mn; for (int i = 0; i < int(d.modes.size()); ++i) mn << QString("%1:%2").arg(i).arg(d.modes[size_t(i)].name);
             out << "   modes: " << mn.join("  ") << "\n";
         }
@@ -224,4 +235,11 @@ void MainWindow::setRoomColor() {
     if (!col.isValid()) return;
     ipc_->sendWledColor(col, true);       // app -> backend -> WLED /json/state
     status_->setText(QString("Sent room colour %1 to WLED.").arg(col.name()));
+}
+
+void MainWindow::maxZones() {
+    QString err;
+    const int n = OrgbClient::resizeZones(kHost, kPort, kDefaultZoneLeds, /*onlyZero*/false, &err);
+    if (n >= 0) { status_->setText(QString("Sized %1 zone(s) to %2 LEDs — rescanning…").arg(n).arg(kDefaultZoneLeds)); refresh(); }
+    else status_->setText("⚠  " + err);
 }

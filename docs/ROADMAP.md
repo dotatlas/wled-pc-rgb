@@ -23,7 +23,8 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.8 | 3 | Control WLED from the app (Set room… → backend → /json/state) | ✅ done |
 | v0.9 | 3 | **The mirror** — live-view → IPC → OrgbMirror → PC mirrors WLED (incl. LedFx), average colour | ✅ done |
 | v0.10 | 3 | Positional (spread) mapping + policy toggle = **Goal #2 complete** | ✅ done |
-| v0.11 | 4 | DDP/E1.31 sniff tap + auto-select + mapping editor (fidelity/latency) | |
+| v0.11 | 1+ | Auto-size motherboard ARGB zones to 24 (fixes OpenRGB-wiped JARGB sizes; fans light) | ✅ done |
+| v0.12 | 4 | DDP/E1.31 sniff tap + auto-select + mapping editor (fidelity/latency) | |
 | v0.12 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) | |
 | v0.13 | 5 | Kraken Elite LCD — static sensor screen → looping GIF | |
 | **v1.0** | — | Polish: autostart, packaging/installer, signing, docs — release | |

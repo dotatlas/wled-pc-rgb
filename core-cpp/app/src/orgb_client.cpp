@@ -12,6 +12,7 @@ enum : quint32 {
     CMD_CONTROLLER_DATA  = 1,
     CMD_PROTOCOL_VERSION = 40,
     CMD_SET_CLIENT_NAME  = 50,
+    CMD_RESIZE_ZONE      = 1000,
     CMD_UPDATE_LEDS      = 1050,
     CMD_UPDATE_MODE      = 1101,
     CMD_SET_CUSTOM_MODE  = 1100,
@@ -111,7 +112,8 @@ OrgbDevice parseDevice(const QByteArray& blob, quint32 ver) {
         OrgbZone zone;
         zone.name = r.str();
         r.i32();                   // zone type
-        r.u32(); r.u32();          // leds_min/max
+        zone.ledsMin  = int(r.u32());
+        zone.ledsMax  = int(r.u32());
         zone.ledCount = int(r.u32());
         quint16 matrixLen = r.u16();
         if (matrixLen > 0) r.skip(matrixLen);
@@ -294,6 +296,37 @@ int OrgbClient::setAllColor(const QString& host, quint16 port, const QColor& col
         OrgbDevice d;
         if (!requestDevice(*s, i, ver, d)) continue;
         if (writeColor(*s, i, d, color)) ++done;
+    }
+    syncFlush(*s);
+    delete s;
+    return done;
+}
+
+int OrgbClient::resizeZones(const QString& host, quint16 port, int target, bool onlyZero, QString* error) {
+    quint32 ver; QTcpSocket* s = connectHandshake(host, port, ver, error);
+    if (!s) return -1;
+    sendPacket(*s, 0, CMD_CONTROLLER_COUNT);
+    bool ok; quint32 c; QByteArray r = recvPacket(*s, c, ok);
+    if (!ok || r.size() < 4) { if (error) *error = "OpenRGB did not respond."; delete s; return -1; }
+    quint32 count = le32(r.constData());
+    int done = 0;
+    for (quint32 i = 0; i < count; ++i) {
+        OrgbDevice d;
+        if (!requestDevice(*s, i, ver, d)) continue;
+        // Only motherboard ARGB headers (type 0). NZXT Hue2 / cooler / peripheral
+        // drivers manage their own zones — resizing them APPENDS zones and corrupts
+        // the device (observed: Kraken grew to 76 zones / 29200 LEDs).
+        if (d.type != 0) continue;
+        for (int zi = 0; zi < int(d.zones.size()); ++zi) {
+            const OrgbZone& z = d.zones[size_t(zi)];
+            if (z.ledsMax <= z.ledsMin) continue;              // not resizable
+            if (onlyZero && z.ledCount != 0) continue;
+            const int newSize = qBound(z.ledsMin, target, z.ledsMax);
+            if (newSize == z.ledCount) continue;
+            QByteArray p; put32(p, quint32(zi)); put32(p, quint32(newSize));
+            sendPacket(*s, i, CMD_RESIZE_ZONE, p);
+            ++done;
+        }
     }
     syncFlush(*s);
     delete s;
