@@ -226,6 +226,48 @@ bool OrgbClient::setDeviceMode(const QString& host, quint16 port,
     return true;
 }
 
+// --- OrgbMirror: persistent session for the realtime mirror --------------------
+OrgbMirror::~OrgbMirror() { close(); }
+
+void OrgbMirror::close() {
+    if (sock_) { delete sock_; sock_ = nullptr; }
+    devs_.clear();
+}
+
+bool OrgbMirror::open(const QString& host, quint16 port, QString* error) {
+    close();
+    quint32 ver; QTcpSocket* s = connectHandshake(host, port, ver, error);
+    if (!s) return false;
+    sendPacket(*s, 0, CMD_CONTROLLER_COUNT);
+    bool ok; quint32 c; QByteArray r = recvPacket(*s, c, ok);
+    if (!ok || r.size() < 4) { if (error) *error = "OpenRGB did not respond."; delete s; return false; }
+    quint32 count = le32(r.constData());
+    devs_.clear();
+    for (quint32 i = 0; i < count; ++i) {
+        OrgbDevice d;
+        if (!requestDevice(*s, i, ver, d)) continue;
+        if (!d.leds.empty()) {
+            devs_.push_back({int(i), int(d.leds.size())});
+            sendPacket(*s, i, CMD_SET_CUSTOM_MODE);          // direct mode, once
+        }
+    }
+    syncFlush(*s);
+    ver_ = ver; sock_ = s;
+    return true;
+}
+
+void OrgbMirror::apply(const QColor& color) {
+    if (!sock_ || sock_->state() != QAbstractSocket::ConnectedState) return;
+    const quint32 cc = quint32(color.red()) | (quint32(color.green()) << 8) | (quint32(color.blue()) << 16);
+    for (const auto& [idx, ledN] : devs_) {
+        QByteArray up;
+        put32(up, quint32(4 + 2 + 4 * ledN));
+        put16(up, quint16(ledN));
+        for (int i = 0; i < ledN; ++i) put32(up, cc);
+        sendPacket(*sock_, quint32(idx), CMD_UPDATE_LEDS, up);
+    }
+}
+
 int OrgbClient::setAllColor(const QString& host, quint16 port, const QColor& color, QString* error) {
     quint32 ver; QTcpSocket* s = connectHandshake(host, port, ver, error);
     if (!s) return -1;

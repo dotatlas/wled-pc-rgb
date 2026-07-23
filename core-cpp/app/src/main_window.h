@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QColor>
 #include <QString>
+#include "orgb_client.h"
 
 class QTreeWidget;
 class QLabel;
@@ -30,6 +31,8 @@ private:
     QLabel*      wled_   = nullptr;
     QSlider*     bright_ = nullptr;
     IpcClient*   ipc_    = nullptr;
+    OrgbMirror   mirror_;
+    bool         mirroring_ = false;
     QColor       room_;
     QString      baseTitle_ = "wled-pc-rgb";
 };

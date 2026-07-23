@@ -6,7 +6,10 @@
 #include <QByteArray>
 #include <QColor>
 #include <vector>
+#include <utility>
 #include <cstdint>
+
+class QTcpSocket;
 
 struct OrgbLed  { QString name; QColor color; };
 struct OrgbZone { QString name; int ledCount = 0; };
@@ -34,4 +37,21 @@ public:
 
     // Set every device that has LEDs to `color`. Returns how many were set, or -1 on connect failure.
     static int setAllColor(const QString& host, quint16 port, const QColor& color, QString* error);
+};
+
+// A persistent OpenRGB connection for the live mirror: connect once, cache the
+// LED-bearing devices (each put into direct mode), then push a colour to all of
+// them every frame with no reconnect — fast enough to reflect WLED in realtime.
+class OrgbMirror {
+public:
+    ~OrgbMirror();
+    bool open(const QString& host, quint16 port, QString* error);
+    void apply(const QColor& color);
+    void close();
+    bool isOpen() const { return sock_ != nullptr; }
+    int  deviceCount() const { return int(devs_.size()); }
+private:
+    QTcpSocket* sock_ = nullptr;
+    quint32 ver_ = 0;
+    std::vector<std::pair<int,int>> devs_;   // (deviceIndex, ledCount)
 };

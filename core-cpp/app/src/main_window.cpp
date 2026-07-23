@@ -68,7 +68,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* setMod = new QPushButton("Set mode", central);
     auto* setAll = new QPushButton("Set ALL…", central);
     auto* setRoom = new QPushButton("Set room…", central);
-    btn->addWidget(rescan); btn->addWidget(setCol); btn->addWidget(setMod); btn->addWidget(setAll); btn->addWidget(setRoom);
+    auto* mirBtn  = new QPushButton("Mirror room", central);
+    mirBtn->setCheckable(true);
+    btn->addWidget(rescan); btn->addWidget(setCol); btn->addWidget(setMod); btn->addWidget(setAll);
+    btn->addWidget(setRoom); btn->addWidget(mirBtn);
     btn->addStretch(1);
 
     layout->addWidget(mobo_);
@@ -99,6 +102,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(ipc_, &IpcClient::frame, this, [this](const QColor& avg) {
         room_ = avg;
         setWindowTitle(baseTitle_ + " · room " + avg.name());
+        if (mirroring_) mirror_.apply(avg);      // reflect the room onto PC devices
+    });
+    connect(mirBtn, &QPushButton::toggled, this, [this, mirBtn](bool on) {
+        if (on) {
+            QString e;
+            if (mirror_.open(kHost, kPort, &e)) {
+                mirroring_ = true;
+                status_->setText(QString("Mirroring room onto %1 device(s)…").arg(mirror_.deviceCount()));
+            } else { mirroring_ = false; mirBtn->setChecked(false); status_->setText("⚠  " + e); }
+        } else { mirroring_ = false; mirror_.close(); status_->setText("Mirror off."); }
     });
     ipc_->start(47900);
 }

@@ -10,9 +10,11 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QColor>
+#include <QTimer>
 
 #include "main_window.h"
 #include "orgb_client.h"
+#include "ipc_client.h"
 
 namespace {
 constexpr auto kInstanceKey = "wled-pc-rgb.singleton";
@@ -22,7 +24,7 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     app.setApplicationName("wled-pc-rgb");
-    app.setApplicationVersion("0.8");
+    app.setApplicationVersion("0.9");
     app.setOrganizationName("wled-pc-rgb");
     app.setQuitOnLastWindowClosed(false);
 
@@ -42,6 +44,18 @@ int main(int argc, char** argv)
     if (int i = args.indexOf("--setall"); i > 0 && i + 1 < args.size()) {      // --setall <#rrggbb> [pct]
         QString e; return OrgbClient::setAllColor("127.0.0.1", 6742,
                                                   scaledArg(QColor(args[i+1]), args, i+2), &e) >= 0 ? 0 : 2;
+    }
+    if (int i = args.indexOf("--mirror"); i > 0) {                             // --mirror [seconds] (headless mirror)
+        const int secs = (i + 1 < args.size()) ? args[i+1].toInt() : 5;
+        OrgbMirror mir; QString e;
+        if (!mir.open("127.0.0.1", 6742, &e)) return 2;
+        IpcClient ipc;
+        QObject::connect(&ipc, &IpcClient::frame, &app, [&mir](const QColor& c){ mir.apply(c); });
+        ipc.start(47900);
+        QTimer::singleShot(secs * 1000, &app, &QCoreApplication::quit);
+        const int rc = app.exec();
+        mir.close();
+        return rc;
     }
 
     // --- single-instance guard (unchanged from v0.2) ---
