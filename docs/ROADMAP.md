@@ -29,7 +29,8 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.14 | 3+ | Double-click a mode to select it; mode change no longer collapses the device | ✅ done |
 | v0.15 | 3+ | Auto-launch OpenRGB elevated (GPU works) + Kraken mirrors via its mode colour | ✅ done |
 | v0.16 | 3+ | Retry while OpenRGB reports 0 devices (still detecting) + restore diagnostic dump | ✅ done |
-| v0.17 | 4 | DDP/E1.31 sniff tap + auto-select + mapping editor (fidelity/latency) | |
+| v0.17 | 3+ | Safety: OpenRGB stays NON-elevated (never touch SMBus/DDR5); Kraken auto-switches to Static so its ring mirrors | ✅ done |
+| v0.18 | 4 | DDP/E1.31 sniff tap + auto-select + mapping editor (fidelity/latency) | |
 | v0.12 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) | |
 | v0.13 | 5 | Kraken Elite LCD — static sensor screen → looping GIF | |
 | **v1.0** | — | Polish: autostart, packaging/installer, signing, docs — release | |

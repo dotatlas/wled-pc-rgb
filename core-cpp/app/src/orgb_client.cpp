@@ -278,8 +278,20 @@ bool OrgbMirror::open(const QString& host, quint16 port, QString* error) {
         if (!requestDevice(*s, i, ver, d)) continue;
         if (d.type == 1) continue;                 // never drive DRAM (RAM scrapped for safety)
         if (d.leds.empty()) continue;              // nothing to light
-        const int am = d.activeMode;
-        const QByteArray mraw = (am >= 0 && am < int(d.modes.size())) ? d.modes[size_t(am)].raw : QByteArray();
+        int am = d.activeMode;
+        QByteArray mraw = (am >= 0 && am < int(d.modes.size())) ? d.modes[size_t(am)].raw : QByteArray();
+        if (d.type == 4) {   // cooler (Kraken): it lights only in a single-colour mode — prefer Static
+            for (int m = 0; m < int(d.modes.size()); ++m) {
+                if (d.modes[size_t(m)].name.compare(QLatin1String("Static"), Qt::CaseInsensitive) == 0
+                        && !d.modes[size_t(m)].raw.isEmpty()) {
+                    QByteArray p; put32(p, quint32(4 + 4 + d.modes[size_t(m)].raw.size()));
+                    put32(p, quint32(m)); p.append(d.modes[size_t(m)].raw);
+                    sendPacket(*s, quint32(i), CMD_UPDATE_MODE, p);   // activate Static so the ring shows our colour
+                    am = m; mraw = d.modes[size_t(m)].raw;
+                    break;
+                }
+            }
+        }
         devs_.push_back(Dev{int(i), int(d.leds.size()), d.type, am, mraw});
         included_.insert(int(i));                  // include every eligible device by default
     }

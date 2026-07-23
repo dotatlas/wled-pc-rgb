@@ -24,17 +24,6 @@
 #include <QDir>
 #include <QFileDevice>
 #include <QTextStream>
-#include <string>
-#ifdef _WIN32
-#  ifndef WIN32_LEAN_AND_MEAN
-#    define WIN32_LEAN_AND_MEAN
-#  endif
-#  ifndef NOMINMAX
-#    define NOMINMAX
-#  endif
-#  include <windows.h>
-#  include <shellapi.h>
-#endif
 
 namespace {
 constexpr int kDeviceIndexRole = Qt::UserRole + 1;
@@ -175,9 +164,8 @@ void MainWindow::startBackend() {
 }
 
 void MainWindow::startOpenRGB() {
-#ifdef _WIN32
     { QTcpSocket probe; probe.connectToHost(kHost, kPort);
-      if (probe.waitForConnected(300)) { probe.abort(); return; } }   // already running
+      if (probe.waitForConnected(300)) { probe.abort(); return; } }   // already running — use it
     const QStringList candidates = {
         QStringLiteral("C:/.software/OpenRGB/OpenRGB Windows 64-bit/OpenRGB.exe"),
         qEnvironmentVariable("ProgramFiles") + "/OpenRGB/OpenRGB.exe",
@@ -185,13 +173,12 @@ void MainWindow::startOpenRGB() {
     };
     QString exe;
     for (const QString& c : candidates) if (QFile::exists(c)) { exe = c; break; }
-    if (exe.isEmpty()) { status_->setText("OpenRGB not found — launch it manually (SDK server; as admin for GPU RGB)."); return; }
-    const std::wstring wexe  = QDir::toNativeSeparators(exe).toStdWString();
-    const std::wstring wargs = L"--server --noautoconnect";
-    HINSTANCE h = ShellExecuteW(nullptr, L"runas", wexe.c_str(), wargs.c_str(), nullptr, SW_SHOWMINIMIZED);  // elevated (UAC)
-    status_->setText((INT_PTR)h > 32 ? "Starting OpenRGB as administrator — approve the UAC prompt…"
-                                     : "Couldn't launch OpenRGB elevated — launch it manually.");
-#endif
+    if (exe.isEmpty()) { status_->setText("OpenRGB not found — install it, or start it manually with --server."); return; }
+    // NON-elevated on purpose: elevated OpenRGB probes the motherboard SMBus (DDR5), which
+    // risks the RAM and hangs detection on this board. Non-elevated is safe + reliable.
+    // (Trade-off: the GPU is detected but its RGB won't physically light without elevation.)
+    QProcess::startDetached(exe, QStringList{ "--server", "--noautoconnect" });
+    status_->setText("Starting OpenRGB…");
 }
 
 QList<int> MainWindow::gatherChecked() {
