@@ -11,7 +11,7 @@
 #   powershell -File scripts/package-win.ps1 [-Version 0.19] [-SkipBuild]
 
 param(
-    [string]$Version = "1.0",
+    [string]$Version = "1.0.1",
     [switch]$SkipBuild
 )
 
@@ -37,10 +37,21 @@ $stage = Join-Path $dist $stageName
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
-# Copy the self-contained app, minus CMake bookkeeping.
+# Copy the self-contained app. Top-level DLLs/exe/backend AND the Qt plugin
+# subdirectories (platforms\, styles\, imageformats\, tls\, ...) - the platform
+# plugin is mandatory or the exe dies with "no Qt platform plugin could be
+# initialized". Skip CMake bookkeeping and build-only dirs.
 Write-Host "==> Staging app files..."
+$excludeDirs = @("CMakeFiles", "wled_pc_rgb_autogen")
 Get-ChildItem $app -File | Where-Object { $_.Name -ne "cmake_install.cmake" } |
     ForEach-Object { Copy-Item $_.FullName -Destination $stage }
+Get-ChildItem $app -Directory | Where-Object { $excludeDirs -notcontains $_.Name } |
+    ForEach-Object { Copy-Item $_.FullName -Destination $stage -Recurse -Force }
+
+# Fail loudly if the platform plugin didn't make it — the #1 cause of a dead release.
+if (-not (Test-Path (Join-Path $stage "platforms\qwindows.dll"))) {
+    throw "platforms\qwindows.dll missing from the stage - the zip would not run."
+}
 
 # Docs alongside the binary.
 foreach ($doc in @("README.md", "docs\USAGE.md", "docs\ROADMAP.md", "docs\DESIGN.md", "LICENSE")) {
