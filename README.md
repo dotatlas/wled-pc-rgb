@@ -33,9 +33,20 @@ for the phase plan.
 
 ## Status
 
-Phase 0 (scaffold). The two spikes below prove the integration seams — the C++→OpenRGB
-seam (list PC devices) and the WLED→PC seam (mirror WLED's live output) — before we
-build the full app.
+**Working end-to-end (v0.19).** The mirror is complete: the app auto-launches OpenRGB
+(non-elevated, so RAM/SMBus is never touched) and the Java WLED backend, detects the
+PC's RGB devices, and mirrors WLED's live output onto the ticked devices in real time —
+including LedFx audio-reactive takeovers (via the WLED live-view, or lower-latency DDP
+to this PC on UDP 4048). The NZXT Kraken ring is driven via its Static mode; the mouse
+and motherboard ARGB fans light directly; the GPU is detected (its RGB needs OpenRGB run
+as admin). Everything is packaged as a self-contained Windows build.
+
+- **Full setup + usage:** see **[docs/USAGE.md](docs/USAGE.md)**.
+- **Phase plan / history:** see [docs/ROADMAP.md](docs/ROADMAP.md) (Phases 0/1/3 done,
+  Phase 4 DDP tap done; Phase 2 RAM scrapped for safety; Kraken LCD deferred — needs a
+  manual Zadig/WinUSB driver swap).
+
+The dev-toolchain notes below are for building from source.
 
 ## Prerequisites (Windows, Python-free)
 

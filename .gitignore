@@ -4,6 +4,7 @@ out/
 bin/
 cmake-build-*/
 core-cpp/build/
+dist/
 CMakeCache.txt
 CMakeFiles/
 *.o

@@ -31,9 +31,10 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.16 | 3+ | Retry while OpenRGB reports 0 devices (still detecting) + restore diagnostic dump | ✅ done |
 | v0.17 | 3+ | Safety: OpenRGB stays NON-elevated (never touch SMBus/DDR5); Kraken auto-switches to Static so its ring mirrors | ✅ done |
 | v0.18 | 4 + 1.0 | UX overhaul: setup-readiness strip, primary Mirror button, live swatches, per-device ticks + all settings persisted, configurable WLED host, tray + close-to-tray, autostart/start-min, backend DDP tap (UDP 4048) + auto-select, self-healing mirror socket, pause-on-WLED-off, late-HID rescan | ✅ done |
-| v0.19 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) | |
-| v0.20 | 5 | Kraken Elite LCD — static sensor screen → looping GIF (needs Zadig/WinUSB) | |
-| **v1.0** | — | Polish: packaging/installer, signing, docs — release | |
+| v0.19 | 1.0 | Portable self-contained release (package-win.ps1 → versioned zip) + Inno Setup installer script + full usage/troubleshooting guide (docs/USAGE.md) | ✅ done |
+| v0.20 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) — deferred (ring already mirrors via OpenRGB Static) | |
+| v0.21 | 5 | Kraken Elite LCD — static sensor screen → looping GIF — deferred (needs manual Zadig/WinUSB driver swap) | |
+| **v1.0** | — | Release: code-sign the exe/installer + publish (needs a signing cert + Inno Setup installed) | |
 
 ---
 
@@ -92,10 +93,22 @@ Goal: tighter audio-reactivity and richer mapping. Optional.
 - [ ] (Optional) in-house WASAPI+FFT fallback if running without LedFx
 - [~] **Exit:** low-latency audio-reactive PC mirror when LedFx streams DDP to this PC ✓; richer mapping pending
 
-## Phase 5 — Stretch: NZXT Kraken Elite V2
+## Phase 5 — Stretch: NZXT Kraken Elite V2 (deferred)
 Goal: the genuinely bare-metal, reverse-engineered pieces.
 
-- [ ] Kraken RGB ring — bespoke hidapi HUE2 "Direct" driver (`1e71:3012`)
-- [ ] Kraken LCD — port liquidctl `kraken3` bucket/bulk sequence to C++
-      (RGB565, alpha 0x00, WinUSB binding); static sensor screens first, then GIFs
+- [~] Kraken RGB ring — **already mirrors via OpenRGB** (auto-Static, v0.17). A bespoke
+      hidapi HUE2 "Direct" driver (`1e71:3012`) is **deferred**: it would duplicate the
+      working path and risk fighting OpenRGB for the same HID device.
+- [ ] Kraken LCD — port liquidctl `kraken3` bucket/bulk sequence to C++ (RGB565, alpha
+      0x00, WinUSB binding). **Deferred**: requires a manual Zadig/WinUSB driver rebind,
+      which can't be done blind and could disrupt NZXT CAM's access to the device.
 - [ ] **Exit:** custom image / monitoring on the LCD, ring driven by the app
+
+## Packaging & release (v0.19 → v1.0)
+- [x] Portable self-contained build: `core-cpp/scripts/deploy-win.sh` bundles the full
+      DLL closure; `scripts/package-win.ps1` stages it + docs → `dist/*-win64.zip`
+- [x] Installer script: `packaging/wled-pc-rgb.iss` (Inno Setup 6) — prompts for install
+      dir, optional desktop shortcut + launch-at-login
+- [x] Usage/troubleshooting docs: `docs/USAGE.md`; README status refreshed
+- [ ] **v1.0:** compile the installer (needs Inno Setup) + code-sign exe/installer
+      (needs a certificate) + publish — the only remaining steps, both external/manual
