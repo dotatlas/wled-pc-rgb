@@ -3,6 +3,7 @@
 #include <QTimer>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QAbstractSocket>
 
 IpcClient::IpcClient(QObject* parent)
@@ -41,8 +42,12 @@ void IpcClient::onLine(const QByteArray& line) {
     const QString type = o.value("type").toString();
     if (type == "hello")
         emit hello(o.value("wled").toString(), o.value("leds").toInt(), o.value("reachable").toBool());
-    else if (type == "frame")
-        emit frame(QColor(o.value("avg").toString()));
+    else if (type == "frame") {
+        QList<QColor> cols;
+        const auto arr = o.value("cols").toArray();
+        for (const auto& v : arr) cols.push_back(QColor(v.toString()));
+        emit frame(QColor(o.value("avg").toString()), cols);
+    }
 }
 
 void IpcClient::sendWledColor(const QColor& c, bool on) {

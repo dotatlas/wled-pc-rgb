@@ -14,6 +14,7 @@
 #include <QPixmap>
 #include <QIcon>
 #include <QColorDialog>
+#include <QCheckBox>
 #include <QVariant>
 #include <QColor>
 #include <QDir>
@@ -70,8 +71,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* setRoom = new QPushButton("Set room…", central);
     auto* mirBtn  = new QPushButton("Mirror room", central);
     mirBtn->setCheckable(true);
+    auto* spreadChk = new QCheckBox("Spread", central);
     btn->addWidget(rescan); btn->addWidget(setCol); btn->addWidget(setMod); btn->addWidget(setAll);
-    btn->addWidget(setRoom); btn->addWidget(mirBtn);
+    btn->addWidget(setRoom); btn->addWidget(mirBtn); btn->addWidget(spreadChk);
     btn->addStretch(1);
 
     layout->addWidget(mobo_);
@@ -99,10 +101,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         wled_->setText(QString("WLED backend: %1 · %2 · %3 LEDs")
                            .arg(ok ? "reachable" : "UNREACHABLE", n).arg(leds));
     });
-    connect(ipc_, &IpcClient::frame, this, [this](const QColor& avg) {
+    connect(spreadChk, &QCheckBox::toggled, this, [this](bool on) { spread_ = on; });
+    connect(ipc_, &IpcClient::frame, this, [this](const QColor& avg, const QList<QColor>& cols) {
         room_ = avg;
         setWindowTitle(baseTitle_ + " · room " + avg.name());
-        if (mirroring_) mirror_.apply(avg);      // reflect the room onto PC devices
+        if (mirroring_) { if (spread_) mirror_.applyBuckets(cols); else mirror_.apply(avg); }
     });
     connect(mirBtn, &QPushButton::toggled, this, [this, mirBtn](bool on) {
         if (on) {

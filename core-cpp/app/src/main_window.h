@@ -33,6 +33,7 @@ private:
     IpcClient*   ipc_    = nullptr;
     OrgbMirror   mirror_;
     bool         mirroring_ = false;
+    bool         spread_ = false;
     QColor       room_;
     QString      baseTitle_ = "wled-pc-rgb";
 };

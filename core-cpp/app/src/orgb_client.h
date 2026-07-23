@@ -8,6 +8,7 @@
 #include <vector>
 #include <utility>
 #include <cstdint>
+#include <QList>
 
 class QTcpSocket;
 
@@ -47,6 +48,7 @@ public:
     ~OrgbMirror();
     bool open(const QString& host, quint16 port, QString* error);
     void apply(const QColor& color);
+    void applyBuckets(const QList<QColor>& cols);   // stretch buckets across each device's LEDs
     void close();
     bool isOpen() const { return sock_ != nullptr; }
     int  deviceCount() const { return int(devs_.size()); }

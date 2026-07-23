@@ -24,7 +24,7 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     app.setApplicationName("wled-pc-rgb");
-    app.setApplicationVersion("0.9");
+    app.setApplicationVersion("0.10");
     app.setOrganizationName("wled-pc-rgb");
     app.setQuitOnLastWindowClosed(false);
 
@@ -45,12 +45,15 @@ int main(int argc, char** argv)
         QString e; return OrgbClient::setAllColor("127.0.0.1", 6742,
                                                   scaledArg(QColor(args[i+1]), args, i+2), &e) >= 0 ? 0 : 2;
     }
-    if (int i = args.indexOf("--mirror"); i > 0) {                             // --mirror [seconds] (headless mirror)
+    if (int i = args.indexOf("--mirror"); i > 0) {                             // --mirror [seconds] [spread]
         const int secs = (i + 1 < args.size()) ? args[i+1].toInt() : 5;
+        const bool spread = args.contains("spread");
         OrgbMirror mir; QString e;
         if (!mir.open("127.0.0.1", 6742, &e)) return 2;
         IpcClient ipc;
-        QObject::connect(&ipc, &IpcClient::frame, &app, [&mir](const QColor& c){ mir.apply(c); });
+        QObject::connect(&ipc, &IpcClient::frame, &app, [&mir, spread](const QColor& c, const QList<QColor>& cols){
+            if (spread) mir.applyBuckets(cols); else mir.apply(c);
+        });
         ipc.start(47900);
         QTimer::singleShot(secs * 1000, &app, &QCoreApplication::quit);
         const int rc = app.exec();

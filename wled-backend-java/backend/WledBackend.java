@@ -38,6 +38,8 @@ import java.util.regex.Pattern;
 public class WledBackend {
 
     static volatile String  avgColor      = "#000000";
+    static volatile String  bucketsJson   = "[]";
+    static final int NB = 16;                 // downsampled colour buckets across the strip
     static volatile int     ledCount      = 0;
     static volatile String  wledName      = "WLED";
     static volatile boolean wledReachable = false;
@@ -108,6 +110,18 @@ public class WledBackend {
         long r = 0, g = 0, b = 0;
         for (int i = 0; i < n; i++) { r += f[off+i*3]&0xff; g += f[off+i*3+1]&0xff; b += f[off+i*3+2]&0xff; }
         avgColor = String.format("#%02x%02x%02x", (int)(r/n), (int)(g/n), (int)(b/n));
+
+        StringBuilder sb = new StringBuilder("[");
+        for (int bkt = 0; bkt < NB; bkt++) {
+            int lo = bkt * n / NB, hi = (bkt + 1) * n / NB;
+            if (hi <= lo) hi = Math.min(lo + 1, n);
+            long rr = 0, gg = 0, bb = 0; int cnt = 0;
+            for (int i = lo; i < hi; i++) { rr += f[off+i*3]&0xff; gg += f[off+i*3+1]&0xff; bb += f[off+i*3+2]&0xff; cnt++; }
+            if (cnt == 0) cnt = 1;
+            if (bkt > 0) sb.append(",");
+            sb.append(String.format("\"#%02x%02x%02x\"", (int)(rr/cnt), (int)(gg/cnt), (int)(bb/cnt)));
+        }
+        bucketsJson = sb.append("]").toString();
     }
 
     static void handleClient(Socket c) {
@@ -129,7 +143,7 @@ public class WledBackend {
             String last = null;
             while (!s.isClosed()) {
                 String a = avgColor;
-                out.println("{\"type\":\"frame\",\"avg\":\"" + a + "\"}");
+                out.println("{\"type\":\"frame\",\"avg\":\"" + a + "\",\"cols\":" + bucketsJson + "}");
                 if (out.checkError()) break;
                 Thread.sleep(100);
             }

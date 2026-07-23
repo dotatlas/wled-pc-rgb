@@ -22,7 +22,7 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.7 | 3 | Java backend + C++↔Java loopback IPC; room's live colour shown in-app | ✅ done |
 | v0.8 | 3 | Control WLED from the app (Set room… → backend → /json/state) | ✅ done |
 | v0.9 | 3 | **The mirror** — live-view → IPC → OrgbMirror → PC mirrors WLED (incl. LedFx), average colour | ✅ done |
-| v0.10 | 3 | Positional mapping + mapping config UI = **Goal #2 complete** | |
+| v0.10 | 3 | Positional (spread) mapping + policy toggle = **Goal #2 complete** | ✅ done |
 | v0.11 | 4 | DDP/E1.31 sniff tap + auto-select + mapping editor (fidelity/latency) | |
 | v0.12 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) | |
 | v0.13 | 5 | Kraken Elite LCD — static sensor screen → looping GIF | |
@@ -71,8 +71,8 @@ Goal: PC devices mirror WLED's live output, including LedFx overrides.
 - [x] Java WLED backend ✓ (v0.7/v0.8, WledBackend.java): /json/info + live-view + JSON control (Set room…)
 - [x] Live-view tap ✓ (v0.7): backend subscribes {"lv":true}, tracks the strip's average colour
 - [x] IPC ✓ (v0.7): backend→app frame JSON over loopback; app→backend wled-command channel ready
-- [~] C++ mapper — average-colour policy ✓ (v0.9, OrgbMirror); positional policy in v0.10
-- [~] Mirror on/off toggle ✓ (v0.9); pick node + mapping policy UI in v0.10
+- [x] C++ mapper — average ✓ (v0.9) + positional/spread ✓ (v0.10, applyBuckets over 16 buckets)
+- [x] Mirror on/off toggle + Spread policy ✓ (v0.9/v0.10)
 - [x] **Exit MET (2026-07-23):** room solid green → mouse #10ff40; PC follows WLED's live output (incl. LedFx)
 
 ## Phase 4 — Fidelity & latency upgrades

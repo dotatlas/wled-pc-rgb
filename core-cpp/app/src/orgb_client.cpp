@@ -268,6 +268,20 @@ void OrgbMirror::apply(const QColor& color) {
     }
 }
 
+void OrgbMirror::applyBuckets(const QList<QColor>& cols) {
+    if (!sock_ || cols.isEmpty() || sock_->state() != QAbstractSocket::ConnectedState) return;
+    for (const auto& [idx, ledN] : devs_) {
+        QByteArray up;
+        put32(up, quint32(4 + 2 + 4 * ledN));
+        put16(up, quint16(ledN));
+        for (int j = 0; j < ledN; ++j) {
+            const QColor& c = cols[qBound(0, j * cols.size() / qMax(1, ledN), cols.size() - 1)];
+            put32(up, quint32(c.red()) | (quint32(c.green()) << 8) | (quint32(c.blue()) << 16));
+        }
+        sendPacket(*sock_, quint32(idx), CMD_UPDATE_LEDS, up);
+    }
+}
+
 int OrgbClient::setAllColor(const QString& host, quint16 port, const QColor& color, QString* error) {
     quint32 ver; QTcpSocket* s = connectHandshake(host, port, ver, error);
     if (!s) return -1;

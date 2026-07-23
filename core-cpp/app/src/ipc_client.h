@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QColor>
 #include <QByteArray>
+#include <QList>
 
 class QTcpSocket;
 class QTimer;
@@ -18,7 +19,7 @@ public:
 
 signals:
     void hello(const QString& wledName, int leds, bool reachable);
-    void frame(const QColor& avg);          // the room's current live colour (~10/s)
+    void frame(const QColor& avg, const QList<QColor>& cols);   // room live colour + N buckets
     void connectionChanged(bool connected);
 
 private:
