@@ -18,7 +18,7 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.3 | 1 | Live device inspector — connect to OpenRGB, show devices/zones/LEDs in a tree (read-only) | ✅ done |
 | v0.4 | 1 | Color control — set a device color from a picker → writes via OpenRGB | ✅ done |
 | v0.5 | 1 | Modes + brightness + motherboard/SMBIOS panel = **full local RGB control (Goal #1)** | ✅ done |
-| v0.6 | 2 | Gated DDR5 RAM RGB via elevated helper + PawnIO, off-by-default opt-in | |
+| v0.6 | 1+ | Mode switching + set-all-devices colour (RAM/SMBus path scrapped) | ✅ done |
 | v0.7 | 3 | Java backend process + C++↔Java loopback IPC handshake | |
 | v0.8 | 3 | Control WLED from the app (JSON/WebSocket) — drive the room strip | |
 | v0.9 | 3 | **The mirror** — live-view tap → IPC → mapper → PC mirrors WLED (incl. LedFx), average policy | |
@@ -54,8 +54,10 @@ Goal: detect the board, enumerate + control PC RGB locally, in a Qt inspector.
 - [~] Single-instance lock ✓ (v0.2, QLocalServer); autostart (HKCU Run) pending → v1.0
 - [x] **Exit (Goal #1) MET (2026-07-22):** board detected; devices enumerated with zones/modes/LEDs; colour + brightness control verified on Kraken + mouse. Follow-ups: RS120 fan headers need an LED-count resize; GPU write needs elevation.
 
-## Phase 2 — Gated SMBus / DDR5 RAM (opt-in, high-risk)
-Goal: allow Vengeance DDR5 RGB with informed consent. Legitimately skippable.
+## Phase 2 — SCRAPPED (DDR5 RAM / SMBus)
+**Dropped 2026-07-23 by user decision** to eliminate any DIMM-brick risk. The app will
+never touch the SMBus/RAM. RGB stays OpenRGB-SDK-driven (USB-HID / GPU-I2C / mobo-ARGB)
++ WLED. Items below are kept only as a record of what was cut.
 
 - [ ] PawnIO signed-driver integration + elevation story (elevated helper)
 - [ ] Vengeance DDR5 control behind off-by-default toggle + corruption warning

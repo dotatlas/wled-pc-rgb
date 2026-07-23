@@ -1,4 +1,4 @@
-// MainWindow — device inspector + colour/brightness control + motherboard panel.
+// MainWindow — device inspector + colour/mode/brightness control + motherboard panel.
 #pragma once
 #include <QMainWindow>
 
@@ -13,9 +13,12 @@ public:
 
 public slots:
     void refresh();            // connect to OpenRGB and rebuild the tree
-    void setSelectedColor();   // apply a picked colour (scaled by brightness) to the selected device
+    void setSelectedColor();   // colour (scaled by brightness) → selected device
+    void setSelectedMode();    // activate the selected mode row on its device
+    void setAllColor();        // colour → every device at once
 
 private:
+    QColor pickColour();       // shared colour dialog + brightness scaling
     QTreeWidget* tree_   = nullptr;
     QLabel*      status_ = nullptr;
     QLabel*      mobo_   = nullptr;

@@ -22,22 +22,26 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     app.setApplicationName("wled-pc-rgb");
-    app.setApplicationVersion("0.5");
+    app.setApplicationVersion("0.6");
     app.setOrganizationName("wled-pc-rgb");
     app.setQuitOnLastWindowClosed(false);
 
-    // Headless helper:  --set <deviceIndex> <#rrggbb> [brightnessPercent]
+    // Headless helpers for scripting/verification.
     const QStringList args = app.arguments();
-    const int si = args.indexOf("--set");
-    if (si > 0 && si + 2 < args.size()) {
-        QColor col(args[si + 2]);
-        if (si + 3 < args.size()) {                       // optional brightness %
-            const int pct = args[si + 3].toInt();
-            col = QColor(col.red() * pct / 100, col.green() * pct / 100, col.blue() * pct / 100);
-        }
-        QString err;
-        const bool ok = OrgbClient::setDeviceColor("127.0.0.1", 6742, args[si + 1].toInt(), col, &err);
-        return ok ? 0 : 2;
+    auto scaledArg = [](QColor c, const QStringList& a, int at) {
+        if (at < a.size()) { int p = a[at].toInt(); return QColor(c.red()*p/100, c.green()*p/100, c.blue()*p/100); }
+        return c;
+    };
+    if (int i = args.indexOf("--set"); i > 0 && i + 2 < args.size()) {         // --set <dev> <#rrggbb> [pct]
+        QString e; return OrgbClient::setDeviceColor("127.0.0.1", 6742, args[i+1].toInt(),
+                                                     scaledArg(QColor(args[i+2]), args, i+3), &e) ? 0 : 2;
+    }
+    if (int i = args.indexOf("--setmode"); i > 0 && i + 2 < args.size()) {     // --setmode <dev> <modeIndex>
+        QString e; return OrgbClient::setDeviceMode("127.0.0.1", 6742, args[i+1].toInt(), args[i+2].toInt(), &e) ? 0 : 2;
+    }
+    if (int i = args.indexOf("--setall"); i > 0 && i + 1 < args.size()) {      // --setall <#rrggbb> [pct]
+        QString e; return OrgbClient::setAllColor("127.0.0.1", 6742,
+                                                  scaledArg(QColor(args[i+1]), args, i+2), &e) >= 0 ? 0 : 2;
     }
 
     // --- single-instance guard (unchanged from v0.2) ---

@@ -1,32 +1,37 @@
 // orgb_client — talks to a running OpenRGB SDK server (TCP 6742).
-// Reads devices (v0.3) and writes a colour to a device (v0.4). This is our
-// hand-written half: OpenRGB has no C++ client library we want to link, so we
-// speak its wire protocol ourselves.
+// Reads devices; sets a device's colour; switches a device's active mode;
+// sets all devices at once. Hand-written OpenRGB wire protocol.
 #pragma once
 #include <QString>
+#include <QByteArray>
 #include <QColor>
 #include <vector>
 #include <cstdint>
 
 struct OrgbLed  { QString name; QColor color; };
 struct OrgbZone { QString name; int ledCount = 0; };
+struct OrgbMode { QString name; QByteArray raw; };   // raw = the mode's exact bytes, replayed to switch
 struct OrgbDevice {
     QString name;
     int type = 0;
     int activeMode = -1;
-    std::vector<QString>  modes;    // hardware effect names
+    std::vector<OrgbMode> modes;
     std::vector<OrgbZone> zones;
     std::vector<OrgbLed>  leds;
 };
 
 class OrgbClient {
 public:
-    // Connect, load every controller, return them. On failure returns empty
-    // and fills *error.
     static std::vector<OrgbDevice> load(const QString& host, quint16 port, QString* error);
 
     // Put device #index into direct mode and set all its LEDs to `color`.
-    // Returns false (with *error) on failure or if the device has 0 LEDs.
     static bool setDeviceColor(const QString& host, quint16 port,
                                int index, const QColor& color, QString* error);
+
+    // Switch device #index to hardware mode #modeIndex (e.g. Direct, Rainbow).
+    static bool setDeviceMode(const QString& host, quint16 port,
+                              int index, int modeIndex, QString* error);
+
+    // Set every device that has LEDs to `color`. Returns how many were set, or -1 on connect failure.
+    static int setAllColor(const QString& host, quint16 port, const QColor& color, QString* error);
 };
