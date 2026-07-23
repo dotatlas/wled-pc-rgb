@@ -7,6 +7,7 @@
 #include <QColor>
 #include <vector>
 #include <utility>
+#include <set>
 #include <cstdint>
 #include <QList>
 
@@ -51,14 +52,16 @@ public:
 class OrgbMirror {
 public:
     ~OrgbMirror();
-    bool open(const QString& host, quint16 port, QString* error);
+    bool open(const QString& host, quint16 port, QString* error);  // caches eligible devices (leds>0, not DRAM)
+    void setIncluded(const QList<int>& deviceIndices);             // which detected devices to actually drive
     void apply(const QColor& color);
     void applyBuckets(const QList<QColor>& cols);   // stretch buckets across each device's LEDs
     void close();
     bool isOpen() const { return sock_ != nullptr; }
-    int  deviceCount() const { return int(devs_.size()); }
+    int  deviceCount() const;                        // number currently included
 private:
     QTcpSocket* sock_ = nullptr;
     quint32 ver_ = 0;
-    std::vector<std::pair<int,int>> devs_;   // (deviceIndex, ledCount)
+    std::vector<std::pair<int,int>> devs_;   // (deviceIndex, ledCount) — eligible
+    std::set<int> included_;                 // device indices actually driven
 };

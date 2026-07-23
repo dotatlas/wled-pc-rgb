@@ -1,12 +1,16 @@
-// MainWindow — device inspector + colour/mode control + motherboard panel +
-// live WLED mirroring (via the auto-launched Java backend over IPC).
+// MainWindow — WLED mirror control. Shows every device OpenRGB detects with a
+// per-device checkbox for whether it's driven by the mirror. Motherboard panel
+// + device inspector + a PC-only brightness scaler. The app's job is mirroring
+// WLED onto the PC's RGB.
 #pragma once
 #include <QMainWindow>
 #include <QColor>
 #include <QString>
+#include <QList>
 #include "orgb_client.h"
 
 class QTreeWidget;
+class QTreeWidgetItem;
 class QLabel;
 class QSlider;
 class QProcess;
@@ -19,15 +23,13 @@ public:
 
 public slots:
     void refresh();
-    void setSelectedColor();   // colour (× PC brightness) → selected device
-    void setSelectedMode();
-    void setAllColor();        // colour (× PC brightness) → every device
-    void setWledColor();       // colour → WLED (colour only; WLED brightness untouched)
-    void maxZones();
+    void setSelectedMode();    // activate the selected mode row (e.g. Kraken ring -> Static)
+    void maxZones();           // size motherboard ARGB zones so the fans light
 
 private:
-    QColor pickColour();       // raw colour from the dialog (PC brightness applied per use)
-    void   startBackend();     // auto-launch + supervise the Java WLED backend
+    void       startBackend();     // auto-launch + supervise the Java WLED backend
+    QList<int> gatherChecked();    // device indices whose mirror checkbox is ticked
+    void       pushIncluded();     // tell the mirror which devices to drive
 
     QTreeWidget* tree_    = nullptr;
     QLabel*      status_  = nullptr;
@@ -39,6 +41,7 @@ private:
     OrgbMirror   mirror_;
     bool         mirroring_ = false;
     bool         spread_    = false;
+    bool         building_  = false;   // suppress itemChanged while rebuilding the tree
     bool         stopping_  = false;
     QColor       wledColour_;
     QString      baseTitle_ = "wled-pc-rgb";

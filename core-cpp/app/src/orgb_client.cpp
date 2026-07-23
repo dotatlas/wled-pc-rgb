@@ -244,24 +244,37 @@ bool OrgbMirror::open(const QString& host, quint16 port, QString* error) {
     bool ok; quint32 c; QByteArray r = recvPacket(*s, c, ok);
     if (!ok || r.size() < 4) { if (error) *error = "OpenRGB did not respond."; delete s; return false; }
     quint32 count = le32(r.constData());
-    devs_.clear();
+    devs_.clear(); included_.clear();
     for (quint32 i = 0; i < count; ++i) {
         OrgbDevice d;
         if (!requestDevice(*s, i, ver, d)) continue;
-        if (!d.leds.empty()) {
-            devs_.push_back({int(i), int(d.leds.size())});
-            sendPacket(*s, i, CMD_SET_CUSTOM_MODE);          // direct mode, once
-        }
+        if (d.type == 1) continue;                 // never drive DRAM (RAM scrapped for safety)
+        if (d.leds.empty()) continue;              // nothing to light
+        devs_.push_back({int(i), int(d.leds.size())});
+        included_.insert(int(i));                  // include every eligible device by default
+        // We deliberately do NOT force a mode: the device stays in whatever mode the user
+        // chose (Direct for most, Static for the Kraken ring) and UpdateLEDs applies there.
     }
-    syncFlush(*s);
     ver_ = ver; sock_ = s;
     return true;
+}
+
+void OrgbMirror::setIncluded(const QList<int>& deviceIndices) {
+    included_.clear();
+    for (int i : deviceIndices) included_.insert(i);
+}
+
+int OrgbMirror::deviceCount() const {
+    int n = 0;
+    for (const auto& [idx, ledN] : devs_) if (included_.count(idx)) ++n;
+    return n;
 }
 
 void OrgbMirror::apply(const QColor& color) {
     if (!sock_ || sock_->state() != QAbstractSocket::ConnectedState) return;
     const quint32 cc = quint32(color.red()) | (quint32(color.green()) << 8) | (quint32(color.blue()) << 16);
     for (const auto& [idx, ledN] : devs_) {
+        if (!included_.count(idx)) continue;
         QByteArray up;
         put32(up, quint32(4 + 2 + 4 * ledN));
         put16(up, quint16(ledN));
@@ -273,6 +286,7 @@ void OrgbMirror::apply(const QColor& color) {
 void OrgbMirror::applyBuckets(const QList<QColor>& cols) {
     if (!sock_ || cols.isEmpty() || sock_->state() != QAbstractSocket::ConnectedState) return;
     for (const auto& [idx, ledN] : devs_) {
+        if (!included_.count(idx)) continue;
         QByteArray up;
         put32(up, quint32(4 + 2 + 4 * ledN));
         put16(up, quint16(ledN));

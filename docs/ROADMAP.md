@@ -25,7 +25,8 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.10 | 3 | Positional (spread) mapping + policy toggle = **Goal #2 complete** | ✅ done |
 | v0.11 | 1+ | Auto-size motherboard ARGB zones to 24 (fixes OpenRGB-wiped JARGB sizes; fans light) | ✅ done |
 | v0.12 | 3+ | Self-healing mirror (reconnect + watchdog) + auto-launch backend + generic "WLED" naming + PC-only brightness | ✅ done |
-| v0.13 | 4 | DDP/E1.31 sniff tap + auto-select + mapping editor (fidelity/latency) | |
+| v0.13 | 3+ | Mirror-focused UI: per-device mirror toggle, condensed controls, DRAM-safe, no forced mode | ✅ done |
+| v0.14 | 4 | DDP/E1.31 sniff tap + auto-select + mapping editor (fidelity/latency) | |
 | v0.12 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) | |
 | v0.13 | 5 | Kraken Elite LCD — static sensor screen → looping GIF | |
 | **v1.0** | — | Polish: autostart, packaging/installer, signing, docs — release | |
