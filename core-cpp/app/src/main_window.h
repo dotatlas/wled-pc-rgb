@@ -20,6 +20,7 @@ public slots:
     void setSelectedColor();
     void setSelectedMode();
     void setAllColor();
+    void setRoomColor();       // colour → WLED (via the Java backend)
 
 private:
     QColor pickColour();

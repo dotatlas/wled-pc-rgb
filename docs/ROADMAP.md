@@ -20,7 +20,7 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.5 | 1 | Modes + brightness + motherboard/SMBIOS panel = **full local RGB control (Goal #1)** | ✅ done |
 | v0.6 | 1+ | Mode switching + set-all-devices colour (RAM/SMBus path scrapped) | ✅ done |
 | v0.7 | 3 | Java backend + C++↔Java loopback IPC; room's live colour shown in-app | ✅ done |
-| v0.8 | 3 | Control WLED from the app (JSON/WebSocket) — drive the room strip | |
+| v0.8 | 3 | Control WLED from the app (Set room… → backend → /json/state) | ✅ done |
 | v0.9 | 3 | **The mirror** — live-view tap → IPC → mapper → PC mirrors WLED (incl. LedFx), average policy | |
 | v0.10 | 3 | Positional mapping + mapping config UI = **Goal #2 complete** | |
 | v0.11 | 4 | DDP/E1.31 sniff tap + auto-select + mapping editor (fidelity/latency) | |
@@ -68,7 +68,7 @@ never touch the SMBus/RAM. RGB stays OpenRGB-SDK-driven (USB-HID / GPU-I2C / mob
 ## Phase 3 — WLED mirror (Goal #2, the inverted flow)
 Goal: PC devices mirror WLED's live output, including LedFx overrides.
 
-- [~] Java WLED backend ✓ (v0.7, WledBackend.java): /json/info + live-view; JSON control wired in v0.8
+- [x] Java WLED backend ✓ (v0.7/v0.8, WledBackend.java): /json/info + live-view + JSON control (Set room…)
 - [x] Live-view tap ✓ (v0.7): backend subscribes {"lv":true}, tracks the strip's average colour
 - [x] IPC ✓ (v0.7): backend→app frame JSON over loopback; app→backend wled-command channel ready
 - [ ] C++ mapper: WLED frame → PC device zones (average + positional policies)

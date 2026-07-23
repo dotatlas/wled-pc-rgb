@@ -67,7 +67,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* setCol = new QPushButton("Set colour…", central);
     auto* setMod = new QPushButton("Set mode", central);
     auto* setAll = new QPushButton("Set ALL…", central);
-    btn->addWidget(rescan); btn->addWidget(setCol); btn->addWidget(setMod); btn->addWidget(setAll);
+    auto* setRoom = new QPushButton("Set room…", central);
+    btn->addWidget(rescan); btn->addWidget(setCol); btn->addWidget(setMod); btn->addWidget(setAll); btn->addWidget(setRoom);
     btn->addStretch(1);
 
     layout->addWidget(mobo_);
@@ -83,6 +84,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(setCol, &QPushButton::clicked, this, &MainWindow::setSelectedColor);
     connect(setMod, &QPushButton::clicked, this, &MainWindow::setSelectedMode);
     connect(setAll, &QPushButton::clicked, this, &MainWindow::setAllColor);
+    connect(setRoom, &QPushButton::clicked, this, &MainWindow::setRoomColor);
     refresh();
 
     // Java WLED backend (Phase 3): show its status + the room's live colour.
@@ -199,4 +201,11 @@ void MainWindow::setAllColor() {
     const int n = OrgbClient::setAllColor(kHost, kPort, col, &err);
     if (n >= 0) { status_->setText(QString("Set %1 device(s) → %2.").arg(n).arg(col.name())); refresh(); }
     else status_->setText("⚠  " + err);
+}
+
+void MainWindow::setRoomColor() {
+    const QColor col = pickColour();
+    if (!col.isValid()) return;
+    ipc_->sendWledColor(col, true);       // app -> backend -> WLED /json/state
+    status_->setText(QString("Sent room colour %1 to WLED.").arg(col.name()));
 }
