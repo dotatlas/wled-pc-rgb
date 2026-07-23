@@ -22,7 +22,7 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     app.setApplicationName("wled-pc-rgb");
-    app.setApplicationVersion("0.6");
+    app.setApplicationVersion("0.7");
     app.setOrganizationName("wled-pc-rgb");
     app.setQuitOnLastWindowClosed(false);
 

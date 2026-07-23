@@ -11,6 +11,8 @@ qt_add_executable(wled_pc_rgb
     src/orgb_client.cpp
     src/sysinfo.h
     src/sysinfo.cpp
+    src/ipc_client.h
+    src/ipc_client.cpp
 )
 
 target_link_libraries(wled_pc_rgb PRIVATE

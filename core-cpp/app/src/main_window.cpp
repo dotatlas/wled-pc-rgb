@@ -1,6 +1,7 @@
 #include "main_window.h"
 #include "orgb_client.h"
 #include "sysinfo.h"
+#include "ipc_client.h"
 
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
@@ -39,6 +40,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     mobo_->setStyleSheet("font-weight:600;");
 
     status_ = new QLabel("Connecting to OpenRGB…", central);
+    wled_ = new QLabel("WLED backend: connecting…", central);
+    wled_->setStyleSheet("color:#2a8;");
 
     auto* tip = new QLabel("Tip: colours apply in a per-LED mode. If a device doesn't change, "
                            "select one of its modes and click \"Set mode\" (e.g. the Kraken ring "
@@ -69,6 +72,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     layout->addWidget(mobo_);
     layout->addWidget(status_);
+    layout->addWidget(wled_);
     layout->addWidget(tip);
     layout->addWidget(tree_, 1);
     layout->addLayout(bRow);
@@ -80,6 +84,21 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(setMod, &QPushButton::clicked, this, &MainWindow::setSelectedMode);
     connect(setAll, &QPushButton::clicked, this, &MainWindow::setAllColor);
     refresh();
+
+    // Java WLED backend (Phase 3): show its status + the room's live colour.
+    ipc_ = new IpcClient(this);
+    connect(ipc_, &IpcClient::connectionChanged, this, [this](bool c) {
+        if (!c) wled_->setText("WLED backend: not connected (run WledBackend.java)");
+    });
+    connect(ipc_, &IpcClient::hello, this, [this](const QString& n, int leds, bool ok) {
+        wled_->setText(QString("WLED backend: %1 · %2 · %3 LEDs")
+                           .arg(ok ? "reachable" : "UNREACHABLE", n).arg(leds));
+    });
+    connect(ipc_, &IpcClient::frame, this, [this](const QColor& avg) {
+        room_ = avg;
+        setWindowTitle(baseTitle_ + " · room " + avg.name());
+    });
+    ipc_->start(47900);
 }
 
 static QIcon swatch(const QColor& c) { QPixmap pm(14, 14); pm.fill(c); return QIcon(pm); }
@@ -122,7 +141,8 @@ void MainWindow::refresh() {
     }
     status_->setText(QString("Connected — %1 devices · %2 zones · %3 LEDs")
                          .arg(devices.size()).arg(zoneTotal).arg(ledTotal));
-    setWindowTitle(QString("wled-pc-rgb — %1 devices").arg(devices.size()));
+    baseTitle_ = QString("wled-pc-rgb — %1 devices").arg(devices.size());
+    setWindowTitle(baseTitle_);
 
     QFile f(QDir::tempPath() + "/wled-pc-rgb-scan.txt");
     if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {

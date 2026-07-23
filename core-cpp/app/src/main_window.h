@@ -1,10 +1,14 @@
-// MainWindow — device inspector + colour/mode/brightness control + motherboard panel.
+// MainWindow — device inspector + colour/mode/brightness control + motherboard
+// panel + live WLED status (via the Java backend over IPC).
 #pragma once
 #include <QMainWindow>
+#include <QColor>
+#include <QString>
 
 class QTreeWidget;
 class QLabel;
 class QSlider;
+class IpcClient;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -12,15 +16,19 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
 
 public slots:
-    void refresh();            // connect to OpenRGB and rebuild the tree
-    void setSelectedColor();   // colour (scaled by brightness) → selected device
-    void setSelectedMode();    // activate the selected mode row on its device
-    void setAllColor();        // colour → every device at once
+    void refresh();
+    void setSelectedColor();
+    void setSelectedMode();
+    void setAllColor();
 
 private:
-    QColor pickColour();       // shared colour dialog + brightness scaling
+    QColor pickColour();
     QTreeWidget* tree_   = nullptr;
     QLabel*      status_ = nullptr;
     QLabel*      mobo_   = nullptr;
+    QLabel*      wled_   = nullptr;
     QSlider*     bright_ = nullptr;
+    IpcClient*   ipc_    = nullptr;
+    QColor       room_;
+    QString      baseTitle_ = "wled-pc-rgb";
 };
