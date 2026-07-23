@@ -56,6 +56,16 @@ Close the window and the app keeps running in the **tray** (right-click → Show
   so gradients/chases show positionally.
 - **PC brightness** — the slider is a **PC-only** scaler. It dims the mirrored colour on
   your hardware and never changes WLED's brightness.
+- **Flash gain** (1.0×–5.0×) — a multiplier for when WLED's flashes are too dim on the PC.
+  It amplifies the mirrored colour (clamped at full brightness), so a faint spike on the
+  strip reads as a punchy flash on your fans/ring. 1.0× = no change.
+- **Min brightness** (0–100%) — a floor the PC light never drops below. WLED spikes still
+  flash *above* it, but between flashes the PC keeps a baseline glow instead of going all
+  the way off. Colours keep their hue (a dim red is lifted to a brighter red); a fully
+  black frame lifts to a dim neutral glow. 0% = follow WLED exactly (can go dark).
+
+  The three sliders compose: **brightness** sets the overall level, **gain** amplifies the
+  flashes, **min brightness** guarantees a floor. All three are remembered between runs.
 - **Start with Windows** — Options → *Launch at login* and *Start minimised to tray* for
   a set-and-forget background mirror. *Auto-mirror on launch* starts mirroring
   automatically once everything is ready.

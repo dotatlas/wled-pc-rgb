@@ -58,6 +58,8 @@ private:
     QLineEdit* hostEdit_ = nullptr;
     QLabel*  swatchW_ = nullptr; QLabel* swatchP_ = nullptr;
     QSlider* bright_  = nullptr;
+    QSlider* gain_    = nullptr;
+    QSlider* floor_   = nullptr;
     QPushButton* mirBtn_ = nullptr;
     QCheckBox*   spreadChk_ = nullptr;
     QCheckBox*   autoMirrorChk_ = nullptr;

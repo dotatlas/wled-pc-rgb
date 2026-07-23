@@ -49,7 +49,35 @@ constexpr quint16 kPort = 6742;
 constexpr quint16 kIpcPort = 47900;
 constexpr int kDefaultZoneLeds = 24;
 
-QColor scale(const QColor& c, int pct) { return QColor(c.red()*pct/100, c.green()*pct/100, c.blue()*pct/100); }
+// Mirror colour transform: attenuate by PC brightness (0-100%), then amplify by gain
+// (>=100%) so dim WLED flashes read brighter on the PC. Each channel is clamped to
+// 0-255 (QColor rejects out-of-range ints, so the clamp is mandatory once gain > 1x).
+QColor boost(const QColor& c, int briPct, int gainPct) {
+    auto ch = [&](int v){ int x = v * briPct * gainPct / 10000; return x > 255 ? 255 : (x < 0 ? 0 : x); };
+    return QColor(ch(c.red()), ch(c.green()), ch(c.blue()));
+}
+
+// Minimum-brightness floor: guarantees the PC light never drops below `floor255`.
+// If the colour's brightest channel is under the floor, the whole colour is scaled UP
+// so hue is preserved (a dim red stays red, just brighter); pure black lifts to a
+// neutral dim glow so the light never goes fully off. floor255<=0 → no floor.
+QColor withFloor(const QColor& c, int floor255) {
+    if (floor255 <= 0) return c;
+    if (floor255 > 255) floor255 = 255;
+    int m = c.red(); if (c.green() > m) m = c.green(); if (c.blue() > m) m = c.blue();
+    if (m >= floor255) return c;
+    if (m == 0) return QColor(floor255, floor255, floor255);
+    auto up = [&](int v){ int x = v * floor255 / m; return x > 255 ? 255 : x; };
+    return QColor(up(c.red()), up(c.green()), up(c.blue()));
+}
+
+// Full WLED→PC colour map. Order matters: apply the floor to the raw WLED signal FIRST,
+// then brightness+gain. That keeps PC brightness the master ceiling — the floor rides
+// under it and flashes always vary above it. (Flooring last would flatten every frame to
+// a constant glow whenever the floor exceeded the brightness-attenuated ceiling.)
+QColor mapColor(const QColor& c, int briPct, int gainPct, int floorPct) {
+    return boost(withFloor(c, floorPct * 255 / 100), briPct, gainPct);
+}
 
 QString findJava() {
     const QString jh = qEnvironmentVariable("JAVA_HOME");
@@ -142,11 +170,55 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(bright_, &QSlider::valueChanged, this, [this, bVal](int v){
         bVal->setText(QString::number(v) + "%");
         QSettings().setValue("mirror/brightness", v);
-        paintSwatch(swatchP_, scale(wledColour_, v));
+        paintSwatch(swatchP_, mapColor(wledColour_, v, gain_->value(), floor_->value()));
     });
     bRow->addWidget(new QLabel("PC brightness:", central));
     bRow->addWidget(bright_, 1);
     bRow->addWidget(bVal);
+
+    // --- flash gain (multiplier so dim WLED flashes read brighter on the PC) ---
+    auto* gRow = new QHBoxLayout;
+    gain_ = new QSlider(Qt::Horizontal, central);
+    gain_->setRange(100, 500);                 // 1.0x .. 5.0x
+    gain_->setSingleStep(10); gain_->setPageStep(50);
+    gain_->setValue(s.value("mirror/gain", 100).toInt());
+    auto* gLabel = new QLabel("Flash gain:", central);
+    const QString gTip = "Multiplies the mirrored colour so dim WLED flashes show up "
+                         "brighter on your PC RGB. Clamps at full brightness; 1.0× = no change.";
+    gLabel->setToolTip(gTip); gain_->setToolTip(gTip);
+    auto* gVal = new QLabel(central);
+    auto gText = [](int v){ return QString::number(v / 100.0, 'f', 1) + "×"; };
+    gVal->setText(gText(gain_->value()));
+    connect(gain_, &QSlider::valueChanged, this, [this, gVal, gText](int v){
+        gVal->setText(gText(v));
+        QSettings().setValue("mirror/gain", v);
+        paintSwatch(swatchP_, mapColor(wledColour_, bright_->value(), v, floor_->value()));
+    });
+    gRow->addWidget(gLabel);
+    gRow->addWidget(gain_, 1);
+    gRow->addWidget(gVal);
+
+    // --- minimum brightness floor (PC never drops below this — flashes above it) ---
+    auto* fRow = new QHBoxLayout;
+    floor_ = new QSlider(Qt::Horizontal, central);
+    floor_->setRange(0, 100);                  // 0% = follow WLED exactly (can go fully off)
+    floor_->setValue(s.value("mirror/floor", 0).toInt());
+    auto* fLabel = new QLabel("Min brightness:", central);
+    const QString fTip = "The PC light never drops below this. WLED spikes still flash above "
+                         "it, but it never goes all the way off. 0% = follow WLED exactly.";
+    fLabel->setToolTip(fTip); floor_->setToolTip(fTip);
+    auto* fVal = new QLabel(QString::number(floor_->value()) + "%", central);
+    connect(floor_, &QSlider::valueChanged, this, [this, fVal](int v){
+        fVal->setText(QString::number(v) + "%");
+        QSettings().setValue("mirror/floor", v);
+        paintSwatch(swatchP_, mapColor(wledColour_, bright_->value(), gain_->value(), v));
+    });
+    fRow->addWidget(fLabel);
+    fRow->addWidget(floor_, 1);
+    fRow->addWidget(fVal);
+    // Paint the PC preview once now (sliders built setValue-before-connect, so none of
+    // their lambdas fired): reflects a restored Min-brightness floor before the 1st frame.
+    paintSwatch(swatchP_, mapColor(wledColour_, bright_->value(), gain_->value(), floor_->value()));
 
     // --- primary mirror button ------------------------------------------------
     mirBtn_ = new QPushButton("▶  Mirror WLED", central);
@@ -193,6 +265,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     layout->addWidget(new QLabel("Devices to mirror:", central));
     layout->addWidget(tree_, 1);
     layout->addLayout(bRow);
+    layout->addLayout(gRow);
+    layout->addLayout(fRow);
     layout->addWidget(mirBtn_);
     layout->addWidget(adv);
     layout->addWidget(opts);
@@ -253,9 +327,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
     connect(ipc_, &IpcClient::frame, this, [this](const QColor& avg, const QList<QColor>& cols) {
         wledColour_ = avg;
-        const int b = bright_->value();
+        const int b = bright_->value(), g = gain_->value(), fl = floor_->value();
         paintSwatch(swatchW_, avg);
-        paintSwatch(swatchP_, scale(avg, b));
+        paintSwatch(swatchP_, mapColor(avg, b, g, fl));
         setWindowTitle(baseTitle_ + " · WLED " + avg.name());
         if (!mirroring_) return;
         if (!wledOn_) { status_->setText("WLED is off — mirror paused (PC RGB held)."); return; }
@@ -269,10 +343,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
         if (spread_) {
             QList<QColor> sc; sc.reserve(cols.size());
-            for (const QColor& c : cols) sc.push_back(scale(c, b));
+            for (const QColor& c : cols) sc.push_back(mapColor(c, b, g, fl));
             mirror_.applyBuckets(sc);
         } else {
-            mirror_.apply(scale(avg, b));
+            mirror_.apply(mapColor(avg, b, g, fl));
         }
     });
     ipc_->start(kIpcPort);

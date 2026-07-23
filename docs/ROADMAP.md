@@ -32,8 +32,9 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.17 | 3+ | Safety: OpenRGB stays NON-elevated (never touch SMBus/DDR5); Kraken auto-switches to Static so its ring mirrors | ✅ done |
 | v0.18 | 4 + 1.0 | UX overhaul: setup-readiness strip, primary Mirror button, live swatches, per-device ticks + all settings persisted, configurable WLED host, tray + close-to-tray, autostart/start-min, backend DDP tap (UDP 4048) + auto-select, self-healing mirror socket, pause-on-WLED-off, late-HID rescan | ✅ done |
 | v0.19 | 1.0 | Portable self-contained release (package-win.ps1 → versioned zip) + Inno Setup installer script + full usage/troubleshooting guide (docs/USAGE.md) | ✅ done |
-| v0.20 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) — deferred (ring already mirrors via OpenRGB Static) | |
-| v0.21 | 5 | Kraken Elite LCD — static sensor screen → looping GIF — deferred (needs manual Zadig/WinUSB driver swap) | |
+| v0.20 | 4+ | Mirror tone controls: Flash gain (1–5× multiplier so dim WLED flashes read brighter) + Min brightness floor (hue-preserving, never-off baseline). All three sliders persist | ✅ done |
+| v0.21 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) — deferred (ring already mirrors via OpenRGB Static) | |
+| v0.22 | 5 | Kraken Elite LCD — static sensor screen → looping GIF — deferred (needs manual Zadig/WinUSB driver swap) | |
 | **v1.0** | — | Release: code-sign the exe/installer + publish (needs a signing cert + Inno Setup installed) | |
 
 ---
