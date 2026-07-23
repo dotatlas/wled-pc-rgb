@@ -30,6 +30,7 @@ private:
     void       startBackend();     // auto-launch + supervise the Java WLED backend
     QList<int> gatherChecked();    // device indices whose mirror checkbox is ticked
     void       pushIncluded();     // tell the mirror which devices to drive
+    void       activateMode(QTreeWidgetItem* modeItem);   // set a mode in place (no tree rebuild)
 
     QTreeWidget* tree_    = nullptr;
     QLabel*      status_  = nullptr;

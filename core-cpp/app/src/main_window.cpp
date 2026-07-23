@@ -67,6 +67,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(tree_, &QTreeWidget::itemChanged, this, [this](QTreeWidgetItem* it, int col) {
         if (!building_ && col == 0 && it->data(0, kDeviceIndexRole).isValid() && mirroring_) pushIncluded();
     });
+    connect(tree_, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* it, int) {
+        if (it && it->data(0, kModeIndexRole).isValid()) activateMode(it);   // double-click a mode row to select it
+    });
 
     auto* bRow = new QHBoxLayout;
     bright_ = new QSlider(Qt::Horizontal, central);
@@ -230,16 +233,21 @@ void MainWindow::refresh() {
     if (mirroring_) pushIncluded();
 }
 
-void MainWindow::setSelectedMode() {
-    QTreeWidgetItem* item = tree_->currentItem();
+void MainWindow::setSelectedMode() { activateMode(tree_->currentItem()); }
+
+void MainWindow::activateMode(QTreeWidgetItem* item) {
     const QVariant dev  = item ? item->data(0, kDeviceIndexRole) : QVariant();
     const QVariant mode = item ? item->data(0, kModeIndexRole)   : QVariant();
-    if (!item || !mode.isValid()) { status_->setText("Select a mode row (under a device's Modes)."); return; }
+    if (!item || !mode.isValid()) { status_->setText("Select or double-click a mode row (under a device's Modes)."); return; }
     QString err;
-    if (OrgbClient::setDeviceMode(kHost, kPort, dev.toInt(), mode.toInt(), &err)) {
-        status_->setText(QString("Activated mode '%1'.").arg(item->text(0)));
-        refresh();
-    } else status_->setText("⚠  " + err);
+    if (!OrgbClient::setDeviceMode(kHost, kPort, dev.toInt(), mode.toInt(), &err)) { status_->setText("⚠  " + err); return; }
+    // Update the active marker in place — no tree rebuild, so the device stays expanded.
+    if (QTreeWidgetItem* modesNode = item->parent()) {
+        for (int i = 0; i < modesNode->childCount(); ++i)
+            modesNode->child(i)->setText(1, modesNode->child(i) == item ? "● active" : QString());
+        modesNode->setText(1, "active: " + item->text(0));
+    }
+    status_->setText(QString("Activated mode '%1'.").arg(item->text(0)));
 }
 
 void MainWindow::maxZones() {
