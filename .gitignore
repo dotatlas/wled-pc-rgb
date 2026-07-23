@@ -1,0 +1,35 @@
+# --- Build output ---
+build/
+out/
+bin/
+cmake-build-*/
+core-cpp/build/
+CMakeCache.txt
+CMakeFiles/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+
+# --- Java ---
+.gradle/
+*.class
+wled-backend-java/build/
+wled-backend-java/.gradle/
+
+# --- IDE / editor ---
+.idea/
+.vscode/
+*.user
+*.iml
+compile_commands.json
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Local config / secrets (e.g. saved ESP32 IPs, tokens) ---
+*.local.json
+config.local.*
