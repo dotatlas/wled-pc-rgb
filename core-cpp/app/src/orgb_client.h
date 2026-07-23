@@ -13,6 +13,8 @@ struct OrgbZone { QString name; int ledCount = 0; };
 struct OrgbDevice {
     QString name;
     int type = 0;
+    int activeMode = -1;
+    std::vector<QString>  modes;    // hardware effect names
     std::vector<OrgbZone> zones;
     std::vector<OrgbLed>  leds;
 };

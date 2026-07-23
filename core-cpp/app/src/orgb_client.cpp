@@ -86,9 +86,9 @@ OrgbDevice parseDevice(const QByteArray& blob, quint32 ver) {
     r.str(); r.str(); r.str(); r.str();   // description, version, serial, location
 
     quint16 numModes = r.u16();
-    r.i32();                       // active_mode
+    d.activeMode = r.i32();        // active_mode index
     for (int m = 0; m < numModes && r.ok(); ++m) {
-        r.str();                   // mode name
+        d.modes.push_back(r.str());   // mode name
         r.i32();                   // value
         r.u32();                   // flags
         r.u32(); r.u32();          // speed_min/max

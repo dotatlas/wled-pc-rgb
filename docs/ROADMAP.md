@@ -17,7 +17,7 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.2 | 1 | Qt app shell — launches, single-instance, lives in the system tray (self-contained build) | ✅ done |
 | v0.3 | 1 | Live device inspector — connect to OpenRGB, show devices/zones/LEDs in a tree (read-only) | ✅ done |
 | v0.4 | 1 | Color control — set a device color from a picker → writes via OpenRGB | ✅ done |
-| v0.5 | 1 | Modes + brightness + motherboard/SMBIOS panel = **full local RGB control (Goal #1)** | |
+| v0.5 | 1 | Modes + brightness + motherboard/SMBIOS panel = **full local RGB control (Goal #1)** | ✅ done |
 | v0.6 | 2 | Gated DDR5 RAM RGB via elevated helper + PawnIO, off-by-default opt-in | |
 | v0.7 | 3 | Java backend process + C++↔Java loopback IPC handshake | |
 | v0.8 | 3 | Control WLED from the app (JSON/WebSocket) — drive the room strip | |
@@ -47,12 +47,12 @@ Goal: detect the board, enumerate + control PC RGB locally, in a Qt inspector.
 
 - [~] C++ device model — OrgbDevice/Zone/LED structs + colour read/write ✓ (v0.4); modes next (v0.5)
 - [x] OpenRGB SDK client — read + write ✓ (v0.3/v0.4, `orgb_client` over QTcpSocket)
-- [ ] Motherboard detection (passive SMBIOS/DMI read — no bus writes)
+- [x] Motherboard detection via SMBIOS ✓ (v0.5): reads "MSI PRO X870E-P WIFI (MS-7E70)"
 - [~] MSI Mystic Light ARGB controller **detected by OpenRGB ✓ (R2 resolved 2026-07-22)** — remaining: locate the RS120 fans as zones on it + drive them
 - [ ] GPU RGB control (RTX 5070 Ti via OpenRGB RC)
-- [~] Qt shell+tray ✓ (v0.2); inspector tree ✓ (v0.3); per-device colour control ✓ (v0.4); modes/brightness + mobo panel next (v0.5)
-- [~] Single-instance lock ✓ (v0.2, QLocalServer); autostart (HKCU Run) pending
-- [ ] **Exit:** detect board, enumerate + control fans & GPU RGB, no vendor SW running
+- [x] Qt shell+tray ✓ (v0.2); inspector tree ✓ (v0.3); colour control ✓ (v0.4); modes shown + brightness + mobo panel ✓ (v0.5)
+- [~] Single-instance lock ✓ (v0.2, QLocalServer); autostart (HKCU Run) pending → v1.0
+- [x] **Exit (Goal #1) MET (2026-07-22):** board detected; devices enumerated with zones/modes/LEDs; colour + brightness control verified on Kraken + mouse. Follow-ups: RS120 fan headers need an LED-count resize; GPU write needs elevation.
 
 ## Phase 2 — Gated SMBus / DDR5 RAM (opt-in, high-risk)
 Goal: allow Vengeance DDR5 RGB with informed consent. Legitimately skippable.
