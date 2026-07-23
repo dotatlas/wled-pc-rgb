@@ -19,6 +19,9 @@ target_link_libraries(wled_pc_rgb PRIVATE
     Qt6::Widgets
     Qt6::Network      # QLocalServer/QLocalSocket (single-instance); OpenRGB SDK client later
 )
+if(WIN32)
+    target_link_libraries(wled_pc_rgb PRIVATE shell32)   # ShellExecuteW (launch OpenRGB elevated)
+endif()
 
 # GUI subsystem on Windows (no console window when launched).
 set_target_properties(wled_pc_rgb PROPERTIES WIN32_EXECUTABLE ON)

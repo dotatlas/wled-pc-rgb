@@ -27,6 +27,7 @@ public slots:
     void maxZones();           // size motherboard ARGB zones so the fans light
 
 private:
+    void       startOpenRGB();     // auto-launch OpenRGB elevated (admin) with its SDK server
     void       startBackend();     // auto-launch + supervise the Java WLED backend
     QList<int> gatherChecked();    // device indices whose mirror checkbox is ticked
     void       pushIncluded();     // tell the mirror which devices to drive

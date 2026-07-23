@@ -51,6 +51,7 @@ public:
 // them every frame with no reconnect — fast enough to reflect WLED in realtime.
 class OrgbMirror {
 public:
+    struct Dev { int idx; int ledN; int type; int activeMode; QByteArray modeRaw; };
     ~OrgbMirror();
     bool open(const QString& host, quint16 port, QString* error);  // caches eligible devices (leds>0, not DRAM)
     void setIncluded(const QList<int>& deviceIndices);             // which detected devices to actually drive
@@ -62,6 +63,6 @@ public:
 private:
     QTcpSocket* sock_ = nullptr;
     quint32 ver_ = 0;
-    std::vector<std::pair<int,int>> devs_;   // (deviceIndex, ledCount) — eligible
+    std::vector<Dev> devs_;                  // eligible devices (leds>0, not DRAM)
     std::set<int> included_;                 // device indices actually driven
 };

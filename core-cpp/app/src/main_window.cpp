@@ -21,6 +21,18 @@
 #include <QFile>
 #include <QTimer>
 #include <QTcpSocket>
+#include <QDir>
+#include <string>
+#ifdef _WIN32
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#  include <shellapi.h>
+#endif
 
 namespace {
 constexpr int kDeviceIndexRole = Qt::UserRole + 1;
@@ -104,6 +116,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(maxZ,   &QPushButton::clicked, this, &MainWindow::maxZones);
     connect(setMod, &QPushButton::clicked, this, &MainWindow::setSelectedMode);
     connect(spreadChk, &QCheckBox::toggled, this, [this](bool on){ spread_ = on; });
+    startOpenRGB();     // launch OpenRGB elevated + SDK server if it isn't already up
     refresh();
 
     startBackend();
@@ -159,6 +172,26 @@ void MainWindow::startBackend() {
     backend_->start();
 }
 
+void MainWindow::startOpenRGB() {
+#ifdef _WIN32
+    { QTcpSocket probe; probe.connectToHost(kHost, kPort);
+      if (probe.waitForConnected(300)) { probe.abort(); return; } }   // already running
+    const QStringList candidates = {
+        QStringLiteral("C:/.software/OpenRGB/OpenRGB Windows 64-bit/OpenRGB.exe"),
+        qEnvironmentVariable("ProgramFiles") + "/OpenRGB/OpenRGB.exe",
+        qEnvironmentVariable("LOCALAPPDATA") + "/OpenRGB/OpenRGB.exe",
+    };
+    QString exe;
+    for (const QString& c : candidates) if (QFile::exists(c)) { exe = c; break; }
+    if (exe.isEmpty()) { status_->setText("OpenRGB not found — launch it manually (SDK server; as admin for GPU RGB)."); return; }
+    const std::wstring wexe  = QDir::toNativeSeparators(exe).toStdWString();
+    const std::wstring wargs = L"--server --noautoconnect";
+    HINSTANCE h = ShellExecuteW(nullptr, L"runas", wexe.c_str(), wargs.c_str(), nullptr, SW_SHOWMINIMIZED);  // elevated (UAC)
+    status_->setText((INT_PTR)h > 32 ? "Starting OpenRGB as administrator — approve the UAC prompt…"
+                                     : "Couldn't launch OpenRGB elevated — launch it manually.");
+#endif
+}
+
 QList<int> MainWindow::gatherChecked() {
     QList<int> out;
     for (int i = 0; i < tree_->topLevelItemCount(); ++i) {
@@ -185,10 +218,11 @@ void MainWindow::refresh() {
     QString err;
     auto devices = OrgbClient::load(kHost, kPort, &err);
     if (!err.isEmpty()) {
-        status_->setText("⚠  " + err);
-        baseTitle_ = "wled-pc-rgb — no OpenRGB";
+        status_->setText("⚠  " + err + "   (retrying…)");
+        baseTitle_ = "wled-pc-rgb — connecting to OpenRGB…";
         setWindowTitle(baseTitle_);
         building_ = false;
+        QTimer::singleShot(2000, this, &MainWindow::refresh);   // keep trying until OpenRGB is up
         return;
     }
 
@@ -248,6 +282,7 @@ void MainWindow::activateMode(QTreeWidgetItem* item) {
         modesNode->setText(1, "active: " + item->text(0));
     }
     status_->setText(QString("Activated mode '%1'.").arg(item->text(0)));
+    if (mirroring_) { QString e; mirror_.open(kHost, kPort, &e); pushIncluded(); }  // refresh mirror's cached mode
 }
 
 void MainWindow::maxZones() {

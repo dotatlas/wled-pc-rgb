@@ -228,6 +228,34 @@ bool OrgbClient::setDeviceMode(const QString& host, quint16 port,
     return true;
 }
 
+// Return a copy of a mode's raw bytes with all its colour slots overwritten to
+// `color` (0x00BBGGRR). Used to drive cooler devices (Kraken) that ignore
+// per-LED writes and only show their active mode's colour.
+static QByteArray modeWithColor(const QByteArray& raw, quint32 ver, const QColor& color) {
+    QByteArray out = raw;
+    const int n = raw.size();
+    auto u16at = [&](int p) -> int { return (p + 2 <= n) ? (quint8(raw[p]) | (quint8(raw[p+1]) << 8)) : -1; };
+    int pos = 0;
+    int nlen = u16at(pos); if (nlen < 0) return out; pos += 2 + nlen;   // name string
+    pos += 4;                 // value
+    pos += 4;                 // flags
+    pos += 8;                 // speed min/max
+    if (ver >= 3) pos += 8;   // brightness min/max
+    pos += 8;                 // colors min/max
+    pos += 4;                 // speed
+    if (ver >= 3) pos += 4;   // brightness
+    pos += 4;                 // direction
+    pos += 4;                 // color_mode
+    int nc = u16at(pos); if (nc < 0) return out; pos += 2;             // num_colors
+    const quint32 c = quint32(color.red()) | (quint32(color.green()) << 8) | (quint32(color.blue()) << 16);
+    for (int k = 0; k < nc && pos + 4 <= out.size(); ++k) {
+        out[pos]   = char(c & 0xFF);   out[pos+1] = char((c >> 8) & 0xFF);
+        out[pos+2] = char((c >> 16) & 0xFF); out[pos+3] = char((c >> 24) & 0xFF);
+        pos += 4;
+    }
+    return out;
+}
+
 // --- OrgbMirror: persistent session for the realtime mirror --------------------
 OrgbMirror::~OrgbMirror() { close(); }
 
@@ -250,10 +278,10 @@ bool OrgbMirror::open(const QString& host, quint16 port, QString* error) {
         if (!requestDevice(*s, i, ver, d)) continue;
         if (d.type == 1) continue;                 // never drive DRAM (RAM scrapped for safety)
         if (d.leds.empty()) continue;              // nothing to light
-        devs_.push_back({int(i), int(d.leds.size())});
+        const int am = d.activeMode;
+        const QByteArray mraw = (am >= 0 && am < int(d.modes.size())) ? d.modes[size_t(am)].raw : QByteArray();
+        devs_.push_back(Dev{int(i), int(d.leds.size()), d.type, am, mraw});
         included_.insert(int(i));                  // include every eligible device by default
-        // We deliberately do NOT force a mode: the device stays in whatever mode the user
-        // chose (Direct for most, Static for the Kraken ring) and UpdateLEDs applies there.
     }
     ver_ = ver; sock_ = s;
     return true;
@@ -266,35 +294,45 @@ void OrgbMirror::setIncluded(const QList<int>& deviceIndices) {
 
 int OrgbMirror::deviceCount() const {
     int n = 0;
-    for (const auto& [idx, ledN] : devs_) if (included_.count(idx)) ++n;
+    for (const Dev& d : devs_) if (included_.count(d.idx)) ++n;
     return n;
+}
+
+// Drive one device to `color`: coolers (Kraken) via their active mode's colour
+// (they ignore per-LED writes); everything else via per-LED UpdateLEDs.
+static void driveDevice(QTcpSocket& s, const OrgbMirror::Dev& d, quint32 ver, const QColor& color) {
+    if (d.type == 4 && !d.modeRaw.isEmpty()) {
+        const QByteArray mr = modeWithColor(d.modeRaw, ver, color);
+        QByteArray p; put32(p, quint32(4 + 4 + mr.size())); put32(p, quint32(d.activeMode)); p.append(mr);
+        sendPacket(s, quint32(d.idx), CMD_UPDATE_MODE, p);
+    } else {
+        const quint32 cc = quint32(color.red()) | (quint32(color.green()) << 8) | (quint32(color.blue()) << 16);
+        QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
+        for (int i = 0; i < d.ledN; ++i) put32(up, cc);
+        sendPacket(s, quint32(d.idx), CMD_UPDATE_LEDS, up);
+    }
 }
 
 void OrgbMirror::apply(const QColor& color) {
     if (!sock_ || sock_->state() != QAbstractSocket::ConnectedState) return;
-    const quint32 cc = quint32(color.red()) | (quint32(color.green()) << 8) | (quint32(color.blue()) << 16);
-    for (const auto& [idx, ledN] : devs_) {
-        if (!included_.count(idx)) continue;
-        QByteArray up;
-        put32(up, quint32(4 + 2 + 4 * ledN));
-        put16(up, quint16(ledN));
-        for (int i = 0; i < ledN; ++i) put32(up, cc);
-        sendPacket(*sock_, quint32(idx), CMD_UPDATE_LEDS, up);
-    }
+    for (const Dev& d : devs_)
+        if (included_.count(d.idx)) driveDevice(*sock_, d, ver_, color);
 }
 
 void OrgbMirror::applyBuckets(const QList<QColor>& cols) {
     if (!sock_ || cols.isEmpty() || sock_->state() != QAbstractSocket::ConnectedState) return;
-    for (const auto& [idx, ledN] : devs_) {
-        if (!included_.count(idx)) continue;
-        QByteArray up;
-        put32(up, quint32(4 + 2 + 4 * ledN));
-        put16(up, quint16(ledN));
-        for (int j = 0; j < ledN; ++j) {
-            const QColor& c = cols[qBound(0, j * cols.size() / qMax(1, ledN), cols.size() - 1)];
+    long r = 0, g = 0, b = 0;
+    for (const QColor& c : cols) { r += c.red(); g += c.green(); b += c.blue(); }
+    const QColor avg(int(r / cols.size()), int(g / cols.size()), int(b / cols.size()));   // coolers get the average
+    for (const Dev& d : devs_) {
+        if (!included_.count(d.idx)) continue;
+        if (d.type == 4 && !d.modeRaw.isEmpty()) { driveDevice(*sock_, d, ver_, avg); continue; }
+        QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
+        for (int j = 0; j < d.ledN; ++j) {
+            const QColor& c = cols[qBound(0, j * cols.size() / qMax(1, d.ledN), cols.size() - 1)];
             put32(up, quint32(c.red()) | (quint32(c.green()) << 8) | (quint32(c.blue()) << 16));
         }
-        sendPacket(*sock_, quint32(idx), CMD_UPDATE_LEDS, up);
+        sendPacket(*sock_, quint32(d.idx), CMD_UPDATE_LEDS, up);
     }
 }
 
