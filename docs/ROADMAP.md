@@ -33,8 +33,9 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.18 | 4 + 1.0 | UX overhaul: setup-readiness strip, primary Mirror button, live swatches, per-device ticks + all settings persisted, configurable WLED host, tray + close-to-tray, autostart/start-min, backend DDP tap (UDP 4048) + auto-select, self-healing mirror socket, pause-on-WLED-off, late-HID rescan | ✅ done |
 | v0.19 | 1.0 | Portable self-contained release (package-win.ps1 → versioned zip) + Inno Setup installer script + full usage/troubleshooting guide (docs/USAGE.md) | ✅ done |
 | v0.20 | 4+ | Mirror tone controls: Flash gain (1–5× multiplier so dim WLED flashes read brighter) + Min brightness floor (hue-preserving, never-off baseline). All three sliders persist | ✅ done |
-| v0.21 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) — deferred (ring already mirrors via OpenRGB Static) | |
-| v0.22 | 5 | Kraken Elite LCD — static sensor screen → looping GIF — deferred (needs manual Zadig/WinUSB driver swap) | |
+| v0.21 | 4 | E1.31/sACN tap (backend UDP 5568, unicast + multicast universe 1) — completes Phase 4 protocol coverage; auto-selects alongside DDP/live-view | ✅ done |
+| v0.22 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) — deferred (ring already mirrors via OpenRGB Static) | |
+| v0.23 | 5 | Kraken Elite LCD — static sensor screen → looping GIF — deferred (needs manual Zadig/WinUSB driver swap) | |
 | **v1.0** | — | Release: code-sign the exe/installer + publish (needs a signing cert + Inno Setup installed) | |
 
 ---
@@ -88,11 +89,11 @@ Goal: PC devices mirror WLED's live output, including LedFx overrides.
 Goal: tighter audio-reactivity and richer mapping. Optional.
 
 - [x] DDP sniffer tap for the LedFx case ✓ (v0.18): backend listens on UDP 4048, decodes DDP → avg + 16 buckets
-- [x] Auto-select tap ✓ (v0.18): live-view is the default; DDP wins for 1500ms whenever DDP frames arrive
-- [ ] E1.31/sACN tap (DDP covers the LedFx-to-this-PC case today)
+- [x] E1.31/sACN tap ✓ (v0.21): backend listens on UDP 5568 (unicast + multicast universe 1), decodes E1.31 data packets → avg + 16 buckets
+- [x] Auto-select tap ✓ (v0.18/v0.21): live-view is the default; DDP or sACN wins for 1500ms whenever their frames arrive
 - [ ] Mapping editor UI (assign strip regions to device zones) — Spread (16 buckets) is the interim
 - [ ] (Optional) in-house WASAPI+FFT fallback if running without LedFx
-- [~] **Exit:** low-latency audio-reactive PC mirror when LedFx streams DDP to this PC ✓; richer mapping pending
+- [~] **Exit:** low-latency audio-reactive PC mirror when LedFx streams DDP or E1.31/sACN to this PC ✓; richer mapping pending
 
 ## Phase 5 — Stretch: NZXT Kraken Elite V2 (deferred)
 Goal: the genuinely bare-metal, reverse-engineered pieces.

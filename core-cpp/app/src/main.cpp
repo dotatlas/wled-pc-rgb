@@ -1,4 +1,4 @@
-// wled-pc-rgb — v0.20: the WLED mirror.
+// wled-pc-rgb — v0.21: the WLED mirror.
 // The window (MainWindow) owns the tray, the setup strip, the device list and all
 // persisted settings. main() keeps the headless CLI helpers, the single-instance
 // guard, and the start-minimised behaviour.
@@ -22,7 +22,7 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     app.setApplicationName("wled-pc-rgb");
-    app.setApplicationVersion("0.20");
+    app.setApplicationVersion("0.21");
     app.setOrganizationName("wled-pc-rgb");
     app.setQuitOnLastWindowClosed(false);   // closing the window hides to tray
 

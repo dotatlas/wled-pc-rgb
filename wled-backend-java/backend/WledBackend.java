@@ -2,14 +2,15 @@
 // -----------------------------------------------------------------------------
 // * WLED live source: subscribes to the live-view WebSocket ({"lv":true}) and
 //   tracks the strip's average colour + 16 buckets. Self-heals (watchdog).
-// * Optional low-latency source: a DDP listener on UDP 4048 — point LedFx at
-//   this PC (port 4048) and it's used instead of the WebSocket while active.
+// * Optional low-latency sources: a DDP listener on UDP 4048 and an E1.31/sACN
+//   listener on UDP 5568 — point LedFx at this PC (DDP device -> 4048, or E1.31
+//   device -> 5568) and it's used instead of the WebSocket while active.
 // * WLED state: polls /json/state so the app knows reachable / on / brightness.
 // * Control: on an app command POSTs ONLY the segment colour (never bri/power).
 // * Bridge: newline-delimited JSON over loopback TCP.
 //
 //   backend -> app :  {"type":"hello",...}
-//                     {"type":"frame","avg":..,"cols":[..],"src":"live|ddp",
+//                     {"type":"frame","avg":..,"cols":[..],"src":"live|ddp|sacn",
 //                      "reachable":b,"on":b,"bri":n}
 //   app -> backend :  {"type":"wled","color":"#rrggbb"}
 //                     {"type":"host","host":"..."}   (reconnect to a new WLED)
@@ -24,7 +25,9 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.MulticastSocket;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
@@ -52,6 +55,9 @@ public class WledBackend {
     static volatile WebSocket liveWs        = null;
     static volatile long      lastFrameMs   = 0;
     static volatile long      lastDdpMs     = 0;
+    static volatile long      lastSacnMs    = 0;
+    // ACN packet identifier "ASC-E1.17\0\0\0" — bytes 4..15 of every E1.31 packet.
+    static final byte[] ACN_ID = {0x41,0x53,0x43,0x2d,0x45,0x31,0x2e,0x31,0x37,0x00,0x00,0x00};
     static final int NB = 16;
     static volatile String wledHost = "wled.local";
     static HttpClient http;
@@ -65,6 +71,7 @@ public class WledBackend {
         connectLiveView();
         startWatchdog();
         startDdpListener();
+        startSacnListener();
 
         ServerSocket server = new ServerSocket();
         server.setReuseAddress(true);
@@ -124,7 +131,8 @@ public class WledBackend {
             while (true) {
                 try { Thread.sleep(3000); } catch (InterruptedException e) { return; }
                 fetchState();
-                if (System.currentTimeMillis() - lastFrameMs > 5000 && System.currentTimeMillis() - lastDdpMs > 5000) {
+                long now = System.currentTimeMillis();
+                if (now - lastFrameMs > 5000 && now - lastDdpMs > 5000 && now - lastSacnMs > 5000) {
                     System.out.println("[backend] no frames — reconnecting live-view");
                     fetchInfo(); connectLiveView();
                 }
@@ -148,10 +156,42 @@ public class WledBackend {
         t.setDaemon(true); t.start();
     }
 
+    // Lower-latency source: LedFx (or anything) can stream E1.31/sACN to this PC:5568.
+    // Handles both unicast (LedFx E1.31 device pointed at this IP) and multicast
+    // (best-effort join of universe 1, 239.255.0.1). RGB starts after the 126-byte header.
+    static void startSacnListener() {
+        Thread t = new Thread(() -> {
+            try (MulticastSocket sock = new MulticastSocket(5568)) {
+                try { sock.joinGroup(InetAddress.getByName("239.255.0.1")); } catch (Exception ignore) {}
+                byte[] buf = new byte[1500];
+                while (true) {
+                    DatagramPacket pkt = new DatagramPacket(buf, buf.length);
+                    sock.receive(pkt);
+                    decodeSacn(buf, pkt.getLength());
+                }
+            } catch (Exception e) { System.out.println("[backend] sACN listener off: " + e.getMessage()); }
+        });
+        t.setDaemon(true); t.start();
+    }
+
+    // E1.31 data packet: 126-byte header (root+framing+DMP), then a DMX START code
+    // (byte 125) and the DMX slots (RGB) from byte 126. Validate the ACN identifier
+    // and a 0x00 (normal-DMX) start code so we ignore sync/other packets.
+    static void decodeSacn(byte[] f, int len) {
+        if (len < 126) return;
+        for (int i = 0; i < 12; i++) if (f[4 + i] != ACN_ID[i]) return;
+        if (f[125] != 0x00) return;
+        lastSacnMs = System.currentTimeMillis();
+        byte[] rgb = new byte[len - 126];
+        System.arraycopy(f, 126, rgb, 0, rgb.length);
+        computeFrom(rgb, 0, "sacn");
+    }
+
     // WLED live-view binary frame: 'L', version, [w,h], then RGB per LED.
     static void decodeLive(byte[] f) {
         lastFrameMs = System.currentTimeMillis();
-        if (System.currentTimeMillis() - lastDdpMs < 1500) return;   // DDP is active → it wins
+        long now = System.currentTimeMillis();
+        if (now - lastDdpMs < 1500 || now - lastSacnMs < 1500) return;   // an external tap (DDP/sACN) is active → it wins
         if (f.length < 2 || (f[0] & 0xff) != 0x4C) return;
         int version = f[1] & 0xff, off = (version == 2) ? 4 : 2;
         computeFrom(f, off, "live");

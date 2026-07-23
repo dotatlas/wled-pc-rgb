@@ -48,9 +48,11 @@ Close the window and the app keeps running in the **tray** (right-click → Show
 - **Mirror a WLED colour or effect** — just turn Mirror on. The PC follows the strip's
   average colour.
 - **Audio-reactive via LedFx** — point LedFx at your WLED as usual; the app reads WLED's
-  live output back, so the PC reacts too. For **lower latency**, point a LedFx DDP device
-  straight at *this PC* on **UDP 4048** — the app uses DDP whenever it's streaming and
-  falls back to the WLED live-view otherwise. No setting to flip; it auto-selects.
+  live output back, so the PC reacts too. For **lower latency**, stream from LedFx straight
+  at *this PC* — either a **DDP** device on **UDP 4048** or an **E1.31/sACN** device on
+  **UDP 5568** (unicast to this PC, or multicast universe 1). The app uses whichever tap is
+  streaming and falls back to the WLED live-view otherwise. No setting to flip; it
+  auto-selects, and the WLED dot shows the active source (live / ddp / sacn).
 - **Spread across LEDs** (Advanced → *Spread across LEDs*) — instead of one average
   colour, WLED's strip is split into 16 buckets and stretched across each device's LEDs,
   so gradients/chases show positionally.
