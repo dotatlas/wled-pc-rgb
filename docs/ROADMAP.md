@@ -37,7 +37,7 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.22 | 4 | Positional mapping: Wrap mode (strip distributed once across all devices in sequence) beside Spread (whole strip per device); buckets 16→64 for smoother gradients | ✅ done |
 | v0.23 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) — deferred (ring already mirrors via OpenRGB Static) | |
 | v0.24 | 5 | Kraken Elite LCD — static sensor screen → looping GIF — deferred (needs manual Zadig/WinUSB driver swap) | |
-| **v1.0** | — | Release: code-sign the exe/installer + publish (needs a signing cert + Inno Setup installed) | |
+| **v1.0** | — | Release: portable self-contained zip, MIT-licensed, open source on GitHub (no installer/signing — by design for a tiny tool) | ✅ done |
 
 ---
 
@@ -115,5 +115,6 @@ Goal: the genuinely bare-metal, reverse-engineered pieces.
 - [x] Installer script: `packaging/wled-pc-rgb.iss` (Inno Setup 6) — prompts for install
       dir, optional desktop shortcut + launch-at-login
 - [x] Usage/troubleshooting docs: `docs/USAGE.md`; README status refreshed
-- [ ] **v1.0:** compile the installer (needs Inno Setup) + code-sign exe/installer
-      (needs a certificate) + publish — the only remaining steps, both external/manual
+- [x] **v1.0 (2026-07-23):** shipped as a portable, self-contained, MIT-licensed zip —
+      open source on GitHub. Code-signing and a compiled installer were dropped by choice
+      (tiny open-source tool); `packaging/wled-pc-rgb.iss` remains for anyone who wants one.

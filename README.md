@@ -33,13 +33,16 @@ for the phase plan.
 
 ## Status
 
-**Working end-to-end (v0.19).** The mirror is complete: the app auto-launches OpenRGB
+**v1.0 — working end-to-end.** The mirror is complete: the app auto-launches OpenRGB
 (non-elevated, so RAM/SMBus is never touched) and the Java WLED backend, detects the
 PC's RGB devices, and mirrors WLED's live output onto the ticked devices in real time —
-including LedFx audio-reactive takeovers (via the WLED live-view, or lower-latency DDP
-to this PC on UDP 4048). The NZXT Kraken ring is driven via its Static mode; the mouse
-and motherboard ARGB fans light directly; the GPU is detected (its RGB needs OpenRGB run
-as admin). Everything is packaged as a self-contained Windows build.
+including LedFx audio-reactive takeovers (via the WLED live-view, or lower-latency DDP on
+UDP 4048 / E1.31 sACN on UDP 5568 straight to this PC). Colour can be tuned per-PC with
+independent brightness, a flash-gain multiplier and a never-off minimum-brightness floor,
+and mapped positionally (Spread the whole strip per device, or Wrap it once across all
+devices). The NZXT Kraken ring is driven via its Static mode; the mouse and motherboard
+ARGB fans light directly; the GPU is detected (its RGB needs OpenRGB run as admin).
+Shipped as a self-contained, MIT-licensed portable Windows zip.
 
 - **Full setup + usage:** see **[docs/USAGE.md](docs/USAGE.md)**.
 - **Phase plan / history:** see [docs/ROADMAP.md](docs/ROADMAP.md) (Phases 0/1/3 done,
@@ -76,30 +79,28 @@ Close/stop **iCUE, MSI Center/Mystic Light, and NZXT CAM** (and their background
 services) first — concurrent access to the same bus/device causes flicker, lost
 detection, and (on the SMBus) corruption.
 
-## Running the Phase-0 spikes
+## Install & run
 
-### 1. C++ → OpenRGB (see your PC devices)
-Connects to the OpenRGB SDK server and lists detected controllers. Dependency-free:
+Download the latest `wled-pc-rgb-vX.Y-win64.zip`, unzip anywhere, and run
+`wled_pc_rgb.exe`. It's fully self-contained (Qt + all DLLs bundled). You only need two
+things installed that the app launches for you — a **JDK 21+** and **OpenRGB** — see
+**[docs/USAGE.md](docs/USAGE.md)** for the full setup, use cases (LedFx, spread/wrap,
+gain/floor), and troubleshooting.
+
+## Build from source
+
+Windows, via MSYS2 UCRT64 (gcc + cmake + ninja + qt6-base — see Prerequisites above):
 ```bash
 cmake -S core-cpp -B core-cpp/build -G Ninja
-cmake --build core-cpp/build
-./core-cpp/build/orgb_probe            # defaults to 127.0.0.1:6742
+cmake --build core-cpp/build           # a POST_BUILD step bundles the full DLL closure
 ```
+The self-contained app lands in `core-cpp/build/app/` (exe + `WledBackend.java` + DLLs).
+`powershell -File scripts/package-win.ps1` zips it into `dist/` as a portable release.
+The Java backend is single-file (no build step); it's launched by the app automatically.
 
-### 2. Java → WLED (mirror the room's live output)
-Reads WLED's live view and prints the decoded frames (LED count + average color),
-so you can confirm the mirror reflects whatever WLED is showing — **including LedFx**.
-Only needs a JDK (single-file launch, no build step):
-```bash
-java wled-backend-java/spike/WledMirrorSpike.java <esp32-ip> 30
-```
-> In WLED, **Config → Sync Interfaces → "Live data override" must be OFF** (default)
-> for LedFx/realtime output to appear in the mirror. Make sure the strip is on and
-> brightness > 0, or frames read as black.
+## License
 
-## What I need from you to move forward
-1. The **ESP32's IP address** (or confirm mDNS name `wled.local`).
-2. Confirm you'll install **OpenRGB 1.0 RC** (or say the word and I'll script it).
-3. Whether you want me to **run the toolchain install** for you, or you'll do it.
-4. Preferred mapping default once we reach Phase 3: **average color** (all devices glow
-   the room's mean) vs **positional** (device zones show slices of the strip).
+MIT — see [LICENSE](LICENSE). This project bundles the **Qt 6** runtime (LGPL v3, as
+separate replaceable DLLs) and talks to **OpenRGB** over its network SDK (OpenRGB is a
+separate GPL program that you install; its code is not linked in). Other bundled DLLs are
+the MinGW-w64 runtime and common permissive libraries (zlib, libpng, freetype, …).

@@ -11,7 +11,7 @@
 #   powershell -File scripts/package-win.ps1 [-Version 0.19] [-SkipBuild]
 
 param(
-    [string]$Version = "0.19",
+    [string]$Version = "1.0",
     [switch]$SkipBuild
 )
 
