@@ -5,6 +5,10 @@ qt_standard_project_setup()   # enables AUTOMOC/AUTOUIC/AUTORCC
 
 qt_add_executable(wled_pc_rgb
     src/main.cpp
+    src/main_window.h
+    src/main_window.cpp
+    src/orgb_client.h
+    src/orgb_client.cpp
 )
 
 target_link_libraries(wled_pc_rgb PRIVATE

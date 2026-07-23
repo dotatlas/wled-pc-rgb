@@ -15,7 +15,7 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 |----|----|----|----|
 | **v0.1** | 0 | Scaffold + 2 spikes: C++ probe lists OpenRGB devices; Java mirrors WLED live output | ✅ done |
 | v0.2 | 1 | Qt app shell — launches, single-instance, lives in the system tray (self-contained build) | ✅ done |
-| v0.3 | 1 | Live device inspector — connect to OpenRGB, show devices/zones/LEDs in a tree (read-only) | |
+| v0.3 | 1 | Live device inspector — connect to OpenRGB, show devices/zones/LEDs in a tree (read-only) | ✅ done |
 | v0.4 | 1 | Color control — set a device/zone color from a picker → writes via OpenRGB | |
 | v0.5 | 1 | Modes + brightness + motherboard/SMBIOS panel = **full local RGB control (Goal #1)** | |
 | v0.6 | 2 | Gated DDR5 RAM RGB via elevated helper + PawnIO, off-by-default opt-in | |
@@ -45,12 +45,12 @@ Goal: prove the two integration seams before investing in the full app.
 ## Phase 1 — Local RGB core (Goal #1)
 Goal: detect the board, enumerate + control PC RGB locally, in a Qt inspector.
 
-- [ ] C++ device model (`Controller/Zone/LED/Mode`, mirrors OpenRGB's)
-- [ ] Robust OpenRGB SDK client wrapper (replaces the probe)
+- [~] C++ device model — OrgbDevice/Zone/LED structs ✓ (v0.3); modes + write side next
+- [~] OpenRGB SDK client — read/parse ✓ (v0.3, `orgb_client` over QTcpSocket); control/write in v0.4
 - [ ] Motherboard detection (passive SMBIOS/DMI read — no bus writes)
 - [~] MSI Mystic Light ARGB controller **detected by OpenRGB ✓ (R2 resolved 2026-07-22)** — remaining: locate the RS120 fans as zones on it + drive them
 - [ ] GPU RGB control (RTX 5070 Ti via OpenRGB RC)
-- [~] Qt app shell + tray ✓ (v0.2, self-contained via scripts/deploy-win.sh); device-inspector tree + color control next (v0.3)
+- [~] Qt app shell + tray ✓ (v0.2); device-inspector tree ✓ (v0.3); per-device color control next (v0.4)
 - [~] Single-instance lock ✓ (v0.2, QLocalServer); autostart (HKCU Run) pending
 - [ ] **Exit:** detect board, enumerate + control fans & GPU RGB, no vendor SW running
 
