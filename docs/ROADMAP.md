@@ -16,7 +16,7 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | **v0.1** | 0 | Scaffold + 2 spikes: C++ probe lists OpenRGB devices; Java mirrors WLED live output | ✅ done |
 | v0.2 | 1 | Qt app shell — launches, single-instance, lives in the system tray (self-contained build) | ✅ done |
 | v0.3 | 1 | Live device inspector — connect to OpenRGB, show devices/zones/LEDs in a tree (read-only) | ✅ done |
-| v0.4 | 1 | Color control — set a device/zone color from a picker → writes via OpenRGB | |
+| v0.4 | 1 | Color control — set a device color from a picker → writes via OpenRGB | ✅ done |
 | v0.5 | 1 | Modes + brightness + motherboard/SMBIOS panel = **full local RGB control (Goal #1)** | |
 | v0.6 | 2 | Gated DDR5 RAM RGB via elevated helper + PawnIO, off-by-default opt-in | |
 | v0.7 | 3 | Java backend process + C++↔Java loopback IPC handshake | |
@@ -45,12 +45,12 @@ Goal: prove the two integration seams before investing in the full app.
 ## Phase 1 — Local RGB core (Goal #1)
 Goal: detect the board, enumerate + control PC RGB locally, in a Qt inspector.
 
-- [~] C++ device model — OrgbDevice/Zone/LED structs ✓ (v0.3); modes + write side next
-- [~] OpenRGB SDK client — read/parse ✓ (v0.3, `orgb_client` over QTcpSocket); control/write in v0.4
+- [~] C++ device model — OrgbDevice/Zone/LED structs + colour read/write ✓ (v0.4); modes next (v0.5)
+- [x] OpenRGB SDK client — read + write ✓ (v0.3/v0.4, `orgb_client` over QTcpSocket)
 - [ ] Motherboard detection (passive SMBIOS/DMI read — no bus writes)
 - [~] MSI Mystic Light ARGB controller **detected by OpenRGB ✓ (R2 resolved 2026-07-22)** — remaining: locate the RS120 fans as zones on it + drive them
 - [ ] GPU RGB control (RTX 5070 Ti via OpenRGB RC)
-- [~] Qt app shell + tray ✓ (v0.2); device-inspector tree ✓ (v0.3); per-device color control next (v0.4)
+- [~] Qt shell+tray ✓ (v0.2); inspector tree ✓ (v0.3); per-device colour control ✓ (v0.4); modes/brightness + mobo panel next (v0.5)
 - [~] Single-instance lock ✓ (v0.2, QLocalServer); autostart (HKCU Run) pending
 - [ ] **Exit:** detect board, enumerate + control fans & GPU RGB, no vendor SW running
 

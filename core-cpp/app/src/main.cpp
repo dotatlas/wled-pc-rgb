@@ -9,8 +9,10 @@
 #include <QSystemTrayIcon>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QColor>
 
 #include "main_window.h"
+#include "orgb_client.h"
 
 namespace {
 constexpr auto kInstanceKey = "wled-pc-rgb.singleton";
@@ -20,9 +22,19 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     app.setApplicationName("wled-pc-rgb");
-    app.setApplicationVersion("0.3");
+    app.setApplicationVersion("0.4");
     app.setOrganizationName("wled-pc-rgb");
     app.setQuitOnLastWindowClosed(false);
+
+    // Headless helper for scripting/verification:  --set <deviceIndex> <#rrggbb>
+    const QStringList args = app.arguments();
+    const int si = args.indexOf("--set");
+    if (si > 0 && si + 2 < args.size()) {
+        QString err;
+        const bool ok = OrgbClient::setDeviceColor(
+            "127.0.0.1", 6742, args[si + 1].toInt(), QColor(args[si + 2]), &err);
+        return ok ? 0 : 2;
+    }
 
     // --- single-instance guard (unchanged from v0.2) ---
     {
