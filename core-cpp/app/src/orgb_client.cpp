@@ -264,6 +264,10 @@ void OrgbMirror::close() {
     devs_.clear();
 }
 
+bool OrgbMirror::alive() const {
+    return sock_ && sock_->state() == QAbstractSocket::ConnectedState;
+}
+
 bool OrgbMirror::open(const QString& host, quint16 port, QString* error) {
     close();
     quint32 ver; QTcpSocket* s = connectHandshake(host, port, ver, error);

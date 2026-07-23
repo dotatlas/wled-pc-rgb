@@ -30,10 +30,10 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.15 | 3+ | Auto-launch OpenRGB elevated (GPU works) + Kraken mirrors via its mode colour | ✅ done |
 | v0.16 | 3+ | Retry while OpenRGB reports 0 devices (still detecting) + restore diagnostic dump | ✅ done |
 | v0.17 | 3+ | Safety: OpenRGB stays NON-elevated (never touch SMBus/DDR5); Kraken auto-switches to Static so its ring mirrors | ✅ done |
-| v0.18 | 4 | DDP/E1.31 sniff tap + auto-select + mapping editor (fidelity/latency) | |
-| v0.12 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) | |
-| v0.13 | 5 | Kraken Elite LCD — static sensor screen → looping GIF | |
-| **v1.0** | — | Polish: autostart, packaging/installer, signing, docs — release | |
+| v0.18 | 4 + 1.0 | UX overhaul: setup-readiness strip, primary Mirror button, live swatches, per-device ticks + all settings persisted, configurable WLED host, tray + close-to-tray, autostart/start-min, backend DDP tap (UDP 4048) + auto-select, self-healing mirror socket, pause-on-WLED-off, late-HID rescan | ✅ done |
+| v0.19 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) | |
+| v0.20 | 5 | Kraken Elite LCD — static sensor screen → looping GIF (needs Zadig/WinUSB) | |
+| **v1.0** | — | Polish: packaging/installer, signing, docs — release | |
 
 ---
 
@@ -58,7 +58,7 @@ Goal: detect the board, enumerate + control PC RGB locally, in a Qt inspector.
 - [~] MSI Mystic Light ARGB controller **detected by OpenRGB ✓ (R2 resolved 2026-07-22)** — remaining: locate the RS120 fans as zones on it + drive them
 - [ ] GPU RGB control (RTX 5070 Ti via OpenRGB RC)
 - [x] Qt shell+tray ✓ (v0.2); inspector tree ✓ (v0.3); colour control ✓ (v0.4); modes shown + brightness + mobo panel ✓ (v0.5)
-- [~] Single-instance lock ✓ (v0.2, QLocalServer); autostart (HKCU Run) pending → v1.0
+- [x] Single-instance lock ✓ (v0.2, QLocalServer); autostart (HKCU Run) + start-minimised ✓ (v0.18)
 - [x] **Exit (Goal #1) MET (2026-07-22):** board detected; devices enumerated with zones/modes/LEDs; colour + brightness control verified on Kraken + mouse. Follow-ups: RS120 fan headers need an LED-count resize; GPU write needs elevation.
 
 ## Phase 2 — SCRAPPED (DDR5 RAM / SMBus)
@@ -85,11 +85,12 @@ Goal: PC devices mirror WLED's live output, including LedFx overrides.
 ## Phase 4 — Fidelity & latency upgrades
 Goal: tighter audio-reactivity and richer mapping. Optional.
 
-- [ ] DDP/E1.31 sniffer tap for the LedFx case (full res/rate/RGBW, low latency)
-- [ ] Auto-select tap (live-view universal default; DDP-sniff when LedFx detected)
-- [ ] Mapping editor UI (assign strip regions to device zones)
+- [x] DDP sniffer tap for the LedFx case ✓ (v0.18): backend listens on UDP 4048, decodes DDP → avg + 16 buckets
+- [x] Auto-select tap ✓ (v0.18): live-view is the default; DDP wins for 1500ms whenever DDP frames arrive
+- [ ] E1.31/sACN tap (DDP covers the LedFx-to-this-PC case today)
+- [ ] Mapping editor UI (assign strip regions to device zones) — Spread (16 buckets) is the interim
 - [ ] (Optional) in-house WASAPI+FFT fallback if running without LedFx
-- [ ] **Exit:** low-latency audio-reactive PC mirror when LedFx is active
+- [~] **Exit:** low-latency audio-reactive PC mirror when LedFx streams DDP to this PC ✓; richer mapping pending
 
 ## Phase 5 — Stretch: NZXT Kraken Elite V2
 Goal: the genuinely bare-metal, reverse-engineered pieces.

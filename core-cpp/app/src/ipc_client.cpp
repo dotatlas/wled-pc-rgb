@@ -46,6 +46,8 @@ void IpcClient::onLine(const QByteArray& line) {
         QList<QColor> cols;
         const auto arr = o.value("cols").toArray();
         for (const auto& v : arr) cols.push_back(QColor(v.toString()));
+        emit wledState(o.value("reachable").toBool(true), o.value("on").toBool(true),
+                       o.value("bri").toInt(255), o.value("src").toString("live"));
         emit frame(QColor(o.value("avg").toString()), cols);
     }
 }
@@ -54,6 +56,13 @@ void IpcClient::sendWledColor(const QColor& c, bool /*on*/) {
     if (sock_->state() != QAbstractSocket::ConnectedState) return;
     // Colour only — never power or brightness, so WLED's own brightness is untouched.
     const QString msg = QString("{\"type\":\"wled\",\"color\":\"%1\"}\n").arg(c.name());
+    sock_->write(msg.toUtf8());
+    sock_->flush();
+}
+
+void IpcClient::sendHost(const QString& host) {
+    if (sock_->state() != QAbstractSocket::ConnectedState) return;
+    const QString msg = QString("{\"type\":\"host\",\"host\":\"%1\"}\n").arg(QString(host).replace('"', ""));
     sock_->write(msg.toUtf8());
     sock_->flush();
 }

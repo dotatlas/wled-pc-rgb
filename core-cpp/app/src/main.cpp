@@ -1,14 +1,12 @@
-// wled-pc-rgb — v0.3: device inspector.
-// Same shell as v0.2 (tray + single-instance), but the window is now a
-// MainWindow that connects to OpenRGB and shows a live device tree.
+// wled-pc-rgb — v0.18: the WLED mirror.
+// The window (MainWindow) owns the tray, the setup strip, the device list and all
+// persisted settings. main() keeps the headless CLI helpers, the single-instance
+// guard, and the start-minimised behaviour.
 
 #include <QApplication>
-#include <QMenu>
-#include <QAction>
-#include <QStyle>
-#include <QSystemTrayIcon>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QSettings>
 #include <QColor>
 #include <QTimer>
 
@@ -24,11 +22,11 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     app.setApplicationName("wled-pc-rgb");
-    app.setApplicationVersion("0.15");
+    app.setApplicationVersion("0.18");
     app.setOrganizationName("wled-pc-rgb");
-    app.setQuitOnLastWindowClosed(false);
+    app.setQuitOnLastWindowClosed(false);   // closing the window hides to tray
 
-    // Headless helpers for scripting/verification.
+    // --- headless helpers for scripting/verification --------------------------
     const QStringList args = app.arguments();
     auto scaledArg = [](QColor c, const QStringList& a, int at) {
         if (at < a.size()) { int p = a[at].toInt(); return QColor(c.red()*p/100, c.green()*p/100, c.blue()*p/100); }
@@ -45,7 +43,7 @@ int main(int argc, char** argv)
         QString e; return OrgbClient::setAllColor("127.0.0.1", 6742,
                                                   scaledArg(QColor(args[i+1]), args, i+2), &e) >= 0 ? 0 : 2;
     }
-    if (int i = args.indexOf("--maxzones"); i > 0) {                           // resize all resizable zones to the default
+    if (args.indexOf("--maxzones") > 0) {                                      // resize all resizable zones to the default
         QString e; return OrgbClient::resizeZones("127.0.0.1", 6742, 24, false, &e) >= 0 ? 0 : 2;
     }
     if (int i = args.indexOf("--mirror"); i > 0) {                             // --mirror [seconds] [spread]
@@ -64,7 +62,7 @@ int main(int argc, char** argv)
         return rc;
     }
 
-    // --- single-instance guard (unchanged from v0.2) ---
+    // --- single-instance guard: a second launch just shows the running one ----
     {
         QLocalSocket ping;
         ping.connectToServer(kInstanceKey);
@@ -78,30 +76,14 @@ int main(int argc, char** argv)
     instanceServer.listen(kInstanceKey);
 
     MainWindow window;
-    auto raise = [&] { window.show(); window.raise(); window.activateWindow(); };
-
-    // --- system tray ---
-    QSystemTrayIcon tray;
-    tray.setIcon(app.style()->standardIcon(QStyle::SP_ComputerIcon));
-    tray.setToolTip("wled-pc-rgb");
-
-    QMenu trayMenu;
-    QObject::connect(trayMenu.addAction("Open"),            &QAction::triggered, raise);
-    QObject::connect(trayMenu.addAction("Rescan devices"),  &QAction::triggered, &window, &MainWindow::refresh);
-    QObject::connect(trayMenu.addAction("Quit"),            &QAction::triggered, qApp, &QApplication::quit);
-    tray.setContextMenu(&trayMenu);
-    tray.show();
-
-    QObject::connect(&tray, &QSystemTrayIcon::activated,
-        [&](QSystemTrayIcon::ActivationReason r) {
-            if (r == QSystemTrayIcon::Trigger || r == QSystemTrayIcon::DoubleClick) raise();
-        });
-
-    QObject::connect(&instanceServer, &QLocalServer::newConnection, [&] {
+    QObject::connect(&instanceServer, &QLocalServer::newConnection, &window, [&] {
         if (QLocalSocket* c = instanceServer.nextPendingConnection()) c->deleteLater();
-        raise();
+        window.showAndRaise();
     });
 
-    raise();
+    // Start minimised to tray if asked (flag or persisted option); else show.
+    const bool startMin = args.contains("--minimized") || QSettings().value("opts/startMin", false).toBool();
+    if (!startMin) window.showAndRaise();
+
     return app.exec();
 }

@@ -59,6 +59,7 @@ public:
     void applyBuckets(const QList<QColor>& cols);   // stretch buckets across each device's LEDs
     void close();
     bool isOpen() const { return sock_ != nullptr; }
+    bool alive() const;                              // socket connected?
     int  deviceCount() const;                        // number currently included
 private:
     QTcpSocket* sock_ = nullptr;

@@ -16,10 +16,12 @@ public:
     explicit IpcClient(QObject* parent = nullptr);
     void start(quint16 port = 47900);
     void sendWledColor(const QColor& c, bool on = true);   // app -> backend -> WLED
+    void sendHost(const QString& host);                    // retarget the backend to a new WLED
 
 signals:
     void hello(const QString& wledName, int leds, bool reachable);
-    void frame(const QColor& avg, const QList<QColor>& cols);   // room live colour + N buckets
+    void frame(const QColor& avg, const QList<QColor>& cols);   // WLED live colour + N buckets
+    void wledState(bool reachable, bool on, int bri, const QString& src);
     void connectionChanged(bool connected);
 
 private:
