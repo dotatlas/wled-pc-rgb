@@ -5,6 +5,29 @@ stretch goals last.** See [DESIGN.md](DESIGN.md) for architecture.
 
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
+## Versioning & commit strategy
+
+Every commit is a **working, standalone build** — a new feature only lands once the app
+still launches and does everything the prior version did, plus the new thing. Each
+increment is a tagged version (`vX.Y`). No half-finished features on `main`.
+
+| Ver | Phase | Standalone capability delivered | State |
+|----|----|----|----|
+| **v0.1** | 0 | Scaffold + 2 spikes: C++ probe lists OpenRGB devices; Java mirrors WLED live output | ✅ done |
+| v0.2 | 1 | Qt app shell — launches, single-instance, lives in the system tray | next |
+| v0.3 | 1 | Live device inspector — connect to OpenRGB, show devices/zones/LEDs in a tree (read-only) | |
+| v0.4 | 1 | Color control — set a device/zone color from a picker → writes via OpenRGB | |
+| v0.5 | 1 | Modes + brightness + motherboard/SMBIOS panel = **full local RGB control (Goal #1)** | |
+| v0.6 | 2 | Gated DDR5 RAM RGB via elevated helper + PawnIO, off-by-default opt-in | |
+| v0.7 | 3 | Java backend process + C++↔Java loopback IPC handshake | |
+| v0.8 | 3 | Control WLED from the app (JSON/WebSocket) — drive the room strip | |
+| v0.9 | 3 | **The mirror** — live-view tap → IPC → mapper → PC mirrors WLED (incl. LedFx), average policy | |
+| v0.10 | 3 | Positional mapping + mapping config UI = **Goal #2 complete** | |
+| v0.11 | 4 | DDP/E1.31 sniff tap + auto-select + mapping editor (fidelity/latency) | |
+| v0.12 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) | |
+| v0.13 | 5 | Kraken Elite LCD — static sensor screen → looping GIF | |
+| **v1.0** | — | Polish: autostart, packaging/installer, signing, docs — release | |
+
 ---
 
 ## Phase 0 — Scaffold, toolchain & seam-proving spikes
