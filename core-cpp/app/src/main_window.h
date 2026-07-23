@@ -45,6 +45,7 @@ private:
     bool         spread_    = false;
     bool         building_  = false;   // suppress itemChanged while rebuilding the tree
     bool         stopping_  = false;
+    int          zeroRetries_ = 0;     // retry loads while OpenRGB reports 0 devices (still detecting)
     QColor       wledColour_;
     QString      baseTitle_ = "wled-pc-rgb";
 };

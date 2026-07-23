@@ -22,6 +22,8 @@
 #include <QTimer>
 #include <QTcpSocket>
 #include <QDir>
+#include <QFileDevice>
+#include <QTextStream>
 #include <string>
 #ifdef _WIN32
 #  ifndef WIN32_LEAN_AND_MEAN
@@ -225,6 +227,16 @@ void MainWindow::refresh() {
         QTimer::singleShot(2000, this, &MainWindow::refresh);   // keep trying until OpenRGB is up
         return;
     }
+    if (devices.empty() && zeroRetries_ < 6) {          // connected but OpenRGB still detecting — wait
+        ++zeroRetries_;
+        status_->setText("OpenRGB connected but no devices yet — waiting for detection…");
+        baseTitle_ = "wled-pc-rgb — detecting devices…";
+        setWindowTitle(baseTitle_);
+        building_ = false;
+        QTimer::singleShot(2000, this, &MainWindow::refresh);
+        return;
+    }
+    zeroRetries_ = 0;
 
     int zoneTotal = 0, ledTotal = 0, mirrorable = 0;
     for (int di = 0; di < int(devices.size()); ++di) {
@@ -265,6 +277,18 @@ void MainWindow::refresh() {
     setWindowTitle(baseTitle_);
     building_ = false;
     if (mirroring_) pushIncluded();
+
+    // Diagnostic dump (temp) so device state can be verified outside the GUI.
+    QFile f(QDir::tempPath() + "/wled-pc-rgb-scan.txt");
+    if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&f);
+        out << "MOTHERBOARD: " << sysinfo::motherboard() << "\n";
+        out << "devices=" << devices.size() << " zones=" << zoneTotal << " leds=" << ledTotal << "\n";
+        for (const auto& d : devices)
+            out << "DEVICE: " << d.name << "  (type " << d.type << ", active=" << d.activeMode << ", "
+                << d.leds.size() << " leds, first="
+                << (d.leds.empty() ? QString("-") : d.leds.front().color.name()) << ")\n";
+    }
 }
 
 void MainWindow::setSelectedMode() { activateMode(tree_->currentItem()); }
