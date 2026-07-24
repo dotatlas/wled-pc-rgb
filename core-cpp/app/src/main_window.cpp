@@ -14,6 +14,7 @@
 #include <QCheckBox>
 #include <QSlider>
 #include <QSpinBox>
+#include <QComboBox>
 #include <QLineEdit>
 #include <QGroupBox>
 #include <QVBoxLayout>
@@ -73,6 +74,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     QSettings s;
     wledHost_ = s.value("wled/host", "wled.local").toString();
     pipelines_ = { &kraken_ };   // bespoke per-device drivers; add more here as devices need them
+    // Default blacklist: any bespoke-driven device that is actually present. Probe each
+    // pipeline once; if its device is here, hide it from the OpenRGB scan (the pipeline
+    // drives it directly). Session only — resets on restart. Re-add it via Advanced.
+    for (DevicePipeline* p : pipelines_) if (p->open()) { blacklist_ << p->match(); p->close(); }
 
     setWindowTitle(baseTitle_);
     resize(660, 640);
@@ -168,7 +173,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* adv = new QGroupBox("Advanced", central);
     adv->setCheckable(true);
     adv->setChecked(false);
-    auto* ag = new QHBoxLayout(adv);
+    auto* av = new QVBoxLayout(adv);
+    auto* ag = new QHBoxLayout;
+    auto* bl = new QHBoxLayout;
     auto* rescan = new QPushButton("Rescan", adv);
     auto* maxZ   = new QPushButton("Size zones", adv);
     zoneSpin_ = new QSpinBox(adv);
@@ -189,12 +196,36 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                          "so the colour flows from one device to the next.");
     ag->addWidget(rescan); ag->addWidget(maxZ); ag->addWidget(zoneSpin_); ag->addWidget(setMod);
     ag->addWidget(spreadChk_); ag->addWidget(wrapChk_); ag->addStretch(1);
-    connect(adv, &QGroupBox::toggled, this, [rescan, maxZ, setMod, this](bool on){
+
+    // Blacklist row: devices hidden from the scan (a bespoke driver owns them), with a way
+    // to re-add one so OpenRGB handles it instead. Session only (resets on restart).
+    auto* blLabel = new QLabel("Hidden (driven directly):", adv);
+    blacklistCombo_ = new QComboBox(adv);
+    blacklistCombo_->setMinimumWidth(220);
+    auto* readd = new QPushButton("Re-add to scan", adv);
+    readd->setToolTip("Show this device in the list again and let OpenRGB drive it (applies on the next Mirror start).");
+    repopulateBlacklist();
+    connect(readd, &QPushButton::clicked, this, [this]{
+        if (!blacklistCombo_ || blacklistCombo_->count() == 0) return;
+        const QString sel = blacklistCombo_->currentText();
+        blacklist_.removeAll(sel);
+        repopulateBlacklist();
+        refresh();
+        status_->setText("Re-added \"" + sel + "\" to the scan — start Mirror again for OpenRGB to drive it.");
+    });
+    bl->addWidget(blLabel); bl->addWidget(blacklistCombo_, 1); bl->addWidget(readd); bl->addStretch(1);
+
+    av->addLayout(ag);
+    av->addLayout(bl);
+
+    connect(adv, &QGroupBox::toggled, this, [rescan, maxZ, setMod, readd, blLabel, this](bool on){
         rescan->setVisible(on); maxZ->setVisible(on); zoneSpin_->setVisible(on); setMod->setVisible(on);
         spreadChk_->setVisible(on); wrapChk_->setVisible(on);
+        blLabel->setVisible(on); blacklistCombo_->setVisible(on); readd->setVisible(on);
     });
     rescan->setVisible(false); maxZ->setVisible(false); zoneSpin_->setVisible(false); setMod->setVisible(false);
     spreadChk_->setVisible(false); wrapChk_->setVisible(false);
+    blLabel->setVisible(false); blacklistCombo_->setVisible(false); readd->setVisible(false);
 
     // --- options group --------------------------------------------------------
     auto* opts = new QGroupBox("Options", central);
@@ -350,12 +381,13 @@ void MainWindow::maybeAutoMirror() {
 
 void MainWindow::setMirroring(bool on) {
     if (on && !mirroring_) {
-        // Open the bespoke device pipelines first, then tell OpenRGB to leave those devices
-        // alone (so the generic path never fights the direct driver). The Kraken is fully
-        // owned by its HID pipeline; OpenRGB never touches it.
-        QList<QString> skip;
-        for (DevicePipeline* p : pipelines_) if (p->open()) skip << p->match();
-        mirror_.setSkip(skip);
+        // OpenRGB ignores every blacklisted device. A bespoke pipeline drives its device
+        // only if that device is blacklisted (hidden); otherwise the device is left to
+        // OpenRGB (the fallback), so a device the pipeline can't own still lights.
+        mirror_.setSkip(blacklist_);
+        for (DevicePipeline* p : pipelines_) {
+            if (blacklist_.contains(p->match(), Qt::CaseInsensitive)) p->open(); else p->close();
+        }
         QString e;
         if (!mirror_.open(kHost, kPort, &e)) {
             status_->setText("⚠  " + e); on = false;
@@ -445,6 +477,12 @@ QList<int> MainWindow::gatherChecked() {
     return out;
 }
 
+void MainWindow::repopulateBlacklist() {
+    if (!blacklistCombo_) return;
+    blacklistCombo_->clear();
+    blacklistCombo_->addItems(blacklist_);
+}
+
 void MainWindow::pushIncluded() {
     mirror_.setIncluded(gatherChecked());
     if (mirroring_) status_->setText(QString("Mirroring WLED onto %1 device(s).").arg(mirror_.deviceCount()));
@@ -512,6 +550,10 @@ void MainWindow::refresh() {
     int zoneTotal = 0, ledTotal = 0, mirrorable = 0;
     for (int di = 0; di < int(devices.size()); ++di) {
         const auto& d = devices[di];
+        bool blacked = false;                        // hidden from the scan (a bespoke pipeline owns it)
+        for (const QString& b : blacklist_) if (d.name.contains(b, Qt::CaseInsensitive)) { blacked = true; break; }
+        if (blacked) continue;
+
         const bool isDram    = (d.type == 1);
         const bool isGpu     = (d.type == 2);
         const bool canMirror = (!isDram && !d.leds.empty());

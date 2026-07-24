@@ -72,6 +72,10 @@ Mirror, and Quit.
 
 ## 5. Device notes
 
+- **Hidden devices** — a device that the app drives directly (for example the Kraken ring)
+  is hidden from the device list, because it does not use OpenRGB. In Advanced, the "Hidden
+  (driven directly)" dropdown shows these, and "Re-add to scan" puts one back so OpenRGB
+  drives it instead. This is for the session only; it resets when you close the app.
 - **NZXT Kraken 2024 Elite ring** — the app drives this ring **directly over USB**, not
   through OpenRGB (OpenRGB drives it too slowly, so the ring lagged by seconds). So the ring
   follows WLED in real time. It sends only lighting commands (the same ones OpenRGB and NZXT

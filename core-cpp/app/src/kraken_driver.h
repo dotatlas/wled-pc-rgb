@@ -28,11 +28,13 @@ public:
 
     void setRingColor(const QColor& c);          // solid ring colour
     void setRing(const QList<QColor>& leds);     // per-LED ring colours (GRB streamed)
+    QString benchmark(int secs);                 // measure achievable ring FPS (diagnostic)
 
 private:
     bool sendDirect(unsigned char channel, unsigned char group, unsigned char count, const unsigned char* grb);
     bool sendApply(unsigned char channel);
     void stream(const QList<QColor>& leds);
+    void streamRaw(const QList<QColor>& leds, bool apply);   // no skip-unchanged; apply optional
 
     hid_device_*   dev_ = nullptr;
     QList<QColor>  last_;                         // skip-unchanged (avoid needless USB traffic)

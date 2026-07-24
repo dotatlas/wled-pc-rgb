@@ -3,6 +3,17 @@
 This is a list of the important changes to **wled-pc-rgb**. The newest is first. Each
 version is a git tag (`vX.Y`).
 
+## v1.4
+
+- **The Kraken ring shows the strip smoothly.** Before, the ring could show a fixed
+  checkerboard pattern (the app sampled only some points of the strip, and it drove a second
+  channel). Now the app averages each part of the strip onto the ring's LEDs and uses one
+  channel, so the ring shows a smooth gradient that moves and flashes with WLED.
+- **Hide the Kraken from the device list.** The Kraken is driven directly, so the app now
+  hides it from the scanned device list (it does not need OpenRGB). In Advanced, the "Hidden
+  (driven directly)" dropdown shows hidden devices, and "Re-add to scan" puts one back so
+  OpenRGB drives it instead. This is for the session only; it resets when you close the app.
+
 ## v1.3.1
 
 - **The Kraken ring now moves with everything else.** Before, the ring showed one average

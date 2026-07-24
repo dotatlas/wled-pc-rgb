@@ -7,6 +7,7 @@
 #include <QColor>
 #include <QString>
 #include <QList>
+#include <QStringList>
 #include "orgb_client.h"
 #include "kraken_driver.h"
 #include "device_pipeline.h"
@@ -19,6 +20,7 @@ class QSpinBox;
 class QLineEdit;
 class QPushButton;
 class QCheckBox;
+class QComboBox;
 class QProcess;
 class QSystemTrayIcon;
 class QAction;
@@ -44,6 +46,7 @@ private:
     void startBackend();
     void connectHostFromField();   // apply the WLED host field + restart backend
     QList<int> gatherChecked();
+    void repopulateBlacklist();
     void maybeAutoMirror();
     void pushIncluded();
     void activateMode(QTreeWidgetItem*);
@@ -64,6 +67,7 @@ private:
     QCheckBox*   spreadChk_ = nullptr;
     QCheckBox*   wrapChk_   = nullptr;
     QSpinBox*    zoneSpin_  = nullptr;
+    QComboBox*   blacklistCombo_ = nullptr;
     QCheckBox*   autoMirrorChk_ = nullptr;
     QCheckBox*   autostartChk_  = nullptr;
     QCheckBox*   startMinChk_   = nullptr;
@@ -79,6 +83,7 @@ private:
     bool  openrgbReady_ = false, backendUp_ = false, wledReachable_ = false, wledOn_ = true;
     int   zeroRetries_ = 0, backendFails_ = 0, backendDelayMs_ = 1500;
     QColor wledColour_;
+    QStringList blacklist_;       // device-name substrings hidden from the scan (session only; resets on restart)
     QString wledHost_ = "wled.local";
     QString baseTitle_ = "wled-pc-rgb";
 };

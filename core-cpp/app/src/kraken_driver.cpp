@@ -1,5 +1,6 @@
 #include "kraken_driver.h"
 #include <hidapi/hidapi.h>
+#include <QElapsedTimer>
 #include <cstring>
 
 // NZXT Kraken 2024 Elite (VID 0x1E71, PID 0x3012). OpenRGB detects its ring as a HUE2
@@ -10,7 +11,9 @@ namespace {
 constexpr unsigned short kVid = 0x1E71;
 constexpr unsigned short kPid = 0x3012;   // Kraken 2024 Elite RGB
 constexpr int kRingLeds = 24;
-const unsigned char kChannels[] = { 0, 1 };
+// Channel 0 is the pump ring. (Channel 1 is the accessory RGB port; driving it with the
+// ring's colours produced a two-tone/alternating artifact on the ring, so we leave it.)
+const unsigned char kChannels[] = { 0 };
 }
 
 KrakenDriver::~KrakenDriver() { close(); }
@@ -66,7 +69,9 @@ bool KrakenDriver::sendApply(unsigned char channel) {
     return hid_write(dev_, buf, 64) >= 0;
 }
 
-void KrakenDriver::stream(const QList<QColor>& leds) {
+void KrakenDriver::stream(const QList<QColor>& leds) { streamRaw(leds, true); }
+
+void KrakenDriver::streamRaw(const QList<QColor>& leds, bool apply) {
     if (!dev_) return;
     int count = leds.size();
     if (count > 40) count = 40;
@@ -84,7 +89,7 @@ void KrakenDriver::stream(const QList<QColor>& leds) {
     for (unsigned char ch : kChannels) {
         sendDirect(ch, 0, first, &grb[0]);
         if (count > 20) sendDirect(ch, 1, (unsigned char)(count - 20), &grb[60]);
-        sendApply(ch);
+        if (apply) sendApply(ch);
     }
 }
 
@@ -102,16 +107,47 @@ void KrakenDriver::setRingColor(const QColor& c) {
     setRing(leds);
 }
 
+// Diagnostic: stream a moving pattern as fast as possible and report the achievable ring
+// frame rate, both with the Apply commit (as we normally send) and Direct-only (to see if
+// the Apply is the bottleneck). Writes are synchronous, so this measures the real ceiling.
+QString KrakenDriver::benchmark(int secs) {
+    if (!dev_) return "Kraken not open";
+    if (secs < 2) secs = 2;
+    const qint64 half = qint64(secs) * 1000 / 2;
+    auto pattern = [](int f) {
+        QList<QColor> r; r.reserve(24);
+        for (int j = 0; j < 24; ++j) r.push_back(QColor::fromHsv(((j * 15) + (f * 12)) % 360, 255, 255));
+        return r;
+    };
+    QElapsedTimer t;
+    int fa = 0; t.start(); while (t.elapsed() < half) { streamRaw(pattern(fa), true);  ++fa; } const double ea = t.elapsed() / 1000.0;
+    int fb = 0; t.restart(); while (t.elapsed() < half) { streamRaw(pattern(fb), false); ++fb; } const double eb = t.elapsed() / 1000.0;
+    setRingColor(QColor(0, 0, 0));   // leave it off
+    return QString("Direct+Apply: %1 frames / %2 s = %3 FPS (%4 ms/frame)\n"
+                   "Direct-only : %5 frames / %6 s = %7 FPS (%8 ms/frame)\n")
+        .arg(fa).arg(ea, 0, 'f', 2).arg(fa / (ea > 0 ? ea : 1), 0, 'f', 1).arg(ea * 1000 / (fa > 0 ? fa : 1), 0, 'f', 2)
+        .arg(fb).arg(eb, 0, 'f', 2).arg(fb / (eb > 0 ? eb : 1), 0, 'f', 1).arg(eb * 1000 / (fb > 0 ? fb : 1), 0, 'f', 2);
+}
+
 // Resample the WLED strip (any length) onto the ring's LEDs, so the ring shows the strip's
 // gradient/motion instead of one flat average — it flashes and moves with everything else.
+// Each ring LED is the AVERAGE of its segment of the strip (not a single sample), so no
+// motion is missed (which looked "static") and a low-res source doesn't alias into a
+// checkerboard.
 void KrakenDriver::apply(const QList<QColor>& strip) {
-    if (strip.isEmpty()) return;
+    const int n = strip.size();
+    if (n <= 0) return;
     QList<QColor> ring;
     ring.reserve(kRingLeds);
     for (int i = 0; i < kRingLeds; ++i) {
-        int idx = i * strip.size() / kRingLeds;
-        if (idx >= strip.size()) idx = strip.size() - 1;
-        ring.push_back(strip[idx]);
+        int lo = i * n / kRingLeds;
+        int hi = (i + 1) * n / kRingLeds;
+        if (hi <= lo) hi = lo + 1;
+        if (hi > n) hi = n;
+        long r = 0, g = 0, b = 0; int cnt = 0;
+        for (int k = lo; k < hi; ++k) { r += strip[k].red(); g += strip[k].green(); b += strip[k].blue(); ++cnt; }
+        if (cnt == 0) cnt = 1;
+        ring.push_back(QColor(int(r / cnt), int(g / cnt), int(b / cnt)));
     }
     setRing(ring);
 }
