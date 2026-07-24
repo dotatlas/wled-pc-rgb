@@ -1,135 +1,137 @@
 # wled-pc-rgb — Usage guide
 
-**What it does:** makes this PC's RGB (fans, GPU, NZXT Kraken ring, mouse, …) a live
-mirror of a WLED instance. Whatever WLED shows — a WLED effect, a colour you set, or an
-external takeover like **LedFx making it audio-reactive** — is reproduced on the PC.
+This app shows your WLED lights on your PC RGB devices (fans, GPU, the NZXT Kraken ring,
+the mouse, and more) in real time. When WLED shows an effect, a color, or a **LedFx
+audio-reactive** pattern, the PC shows the same colors.
 
-> WLED is the master. The PC follows. The app never changes WLED's own brightness, and
-> it never touches your RAM/SMBus (zero DIMM-brick risk).
+> WLED is the master. The PC follows. The app does not change the brightness of WLED. The
+> app does not write to your RAM or SMBus, so there is no risk to the memory.
 
 ---
 
-## 1. Prerequisites
+## 1. What you need
 
-The app orchestrates two things it does **not** bundle:
+The app needs two programs. It does not include them. It starts them for you.
 
-| Need | Why | Get it |
+| You need | Reason | Where to get it |
 |---|---|---|
-| **A JDK (21+)** | runs the bundled `WledBackend.java` (the WLED microservice) | [Adoptium Temurin](https://adoptium.net) — or `scoop install temurin21-jdk` |
-| **OpenRGB** | the app drives your hardware through its SDK server on TCP 6742 | [openrgb.org](https://openrgb.org) — install to e.g. `C:\.software\OpenRGB` |
+| **A JDK, version 21 or higher** | It runs the small WLED helper (`WledBackend.java`). | [Adoptium Temurin](https://adoptium.net), or `scoop install temurin21-jdk` |
+| **OpenRGB** | The app controls your devices through OpenRGB (its SDK on TCP 6742). | [openrgb.org](https://openrgb.org) — install it, for example to `C:\.software\OpenRGB` |
 
-The app auto-launches both when it starts, so you normally just install them and run
-the app. The three **setup dots** at the top show whether each piece is ready.
+Install the two programs and run the app. The app starts both for you. The three status
+dots at the top show when each part is ready.
 
 ## 2. Install
 
-- **Portable:** unzip `wled-pc-rgb-vX.Y-win64.zip` anywhere and run `wled_pc_rgb.exe`.
-  It is fully self-contained (Qt + all DLLs bundled); no PATH setup needed.
-- **Installer** (if built): run `wled-pc-rgb-setup-vX.Y.exe`, choose an install folder,
-  optionally tick *Launch at login*.
+- **Portable:** unzip `wled-pc-rgb-vX.Y-win64.zip` to any folder. Run `wled_pc_rgb.exe`.
+  The folder has Qt and all the DLLs in it. There is no PATH setup.
+- **Installer** (if you build one): run `wled-pc-rgb-setup-vX.Y.exe`. Select a folder. If
+  you want, select *Launch at login*.
 
 ## 3. First run
 
-1. Watch the **setup strip**: `OpenRGB` · `Backend` · `WLED` each turn
-   **green** when ready (grey = not started, amber = working, red = problem). Hover a
-   dot for detail.
-2. In **WLED host**, enter your controller (`wled.local`, or its IP like
-   `192.168.1.50`) and click **Apply**. The WLED dot goes green and its name appears.
-3. The **Devices to mirror** list fills in. Every eligible device is ticked by default —
-   untick any you don't want driven. Your selection is remembered.
-4. Click the big **▶ Mirror WLED** button. The **Live** swatches show the WLED colour
-   and the brightness-scaled PC colour. Your PC now follows WLED in real time.
+1. Look at the status dots: `OpenRGB` · `Backend` · `WLED`. Each dot becomes **green** when
+   the part is ready. (Grey = not started. Amber = busy. Red = a problem.) Point at a dot to
+   see the details.
+2. In the **WLED host** field, type your controller address (`wled.local`, or an IP such as
+   `192.168.1.50`). Click **Apply**. The WLED dot becomes green and shows the name.
+3. The **Devices to mirror** list fills with your devices. The app selects every possible
+   device. Clear the ones that you do not want. The app keeps your choice.
+4. Click the **▶ Mirror WLED** button. The **Live** swatches show the WLED color and the PC
+   color. The PC now follows WLED in real time.
 
-Close the window and the app keeps running in the **tray** (right-click → Show / Mirror
-/ Quit).
+Close the window. The app continues in the tray. Right-click the tray icon for Show,
+Mirror, and Quit.
 
-## 4. Use cases
+## 4. Controls and use cases
 
-- **Mirror a WLED colour or effect** — just turn Mirror on. The PC follows the strip's
-  average colour.
-- **Audio-reactive via LedFx** — point LedFx at your WLED as usual; the app reads WLED's
-  live output back, so the PC reacts too. For **lower latency**, stream from LedFx straight
-  at *this PC* — either a **DDP** device on **UDP 4048** or an **E1.31/sACN** device on
-  **UDP 5568** (unicast to this PC, or multicast universe 1). The app uses whichever tap is
-  streaming and falls back to the WLED live-view otherwise. No setting to flip; it
-  auto-selects, and the WLED dot shows the active source (live / ddp / sacn).
-- **Positional mapping** (Advanced) — instead of one average colour, WLED's strip is
-  split into fine buckets so gradients/chases show up spatially. Two modes:
-    - **Spread (whole strip per device)** — every device stretches the *entire* WLED
-      strip across its own LEDs, so each device shows the full gradient.
-    - **Wrap (strip across all devices)** — the WLED strip is distributed *once* across
-      all ticked devices in sequence, so the colour flows from one device to the next
-      (e.g. GPU → fans → Kraken ring → mouse) as one continuous surface. The Kraken ring
-      shows the average of its slice.
-  The two are mutually exclusive; leave both off for a single average colour everywhere.
-- **PC brightness** — the slider is a **PC-only** scaler. It dims the mirrored colour on
-  your hardware and never changes WLED's brightness.
-- **Flash gain** (1.0×–5.0×) — a multiplier for when WLED's flashes are too dim on the PC.
-  It amplifies the mirrored colour (clamped at full brightness), so a faint spike on the
-  strip reads as a punchy flash on your fans/ring. 1.0× = no change.
-- **Min brightness** (0–100%) — a floor for *dim* content so the PC doesn't drop to near-off
-  between flashes. WLED spikes still flash *above* it, and a dim colour keeps its hue (a dim
-  red is lifted to a brighter red). A **fully black frame stays off** — the floor is for dim
-  content, not for making light out of nothing. 0% = follow WLED exactly.
+- **Mirror a WLED color or effect** — turn Mirror on. The PC shows the average color of the
+  strip.
+- **Audio-reactive with LedFx** — point LedFx at your WLED as normal. The app reads the
+  output of WLED, so the PC reacts too. For a lower delay, send the data from LedFx directly
+  to this PC. Use a **DDP** device on **UDP 4048**, or an **E1.31/sACN** device on **UDP
+  5568** (unicast to this PC, or multicast universe 1). The app uses the source that sends
+  data, or the WLED live-view if no source sends data. The app selects the source
+  automatically. The WLED dot shows the active source (live, ddp, or sacn).
+- **Position modes** (Advanced) — the app splits the strip into small parts, so gradients and
+  chases show by position. There are two modes:
+    - **Spread (whole strip per device)** — each device shows the full strip across its own
+      LEDs.
+    - **Wrap (strip across all devices)** — the app puts the strip one time across all the
+      selected devices in sequence. The color moves from one device to the next (for example
+      GPU → fans → Kraken ring → mouse). The Kraken ring shows the average of its part.
+  The two modes are exclusive. Turn both off for one average color on all devices.
+- **PC brightness** — this slider changes the PC only. It makes the PC color darker. It does
+  not change the brightness of WLED.
+- **Flash gain** (1.0× to 5.0×) — use this when the flashes are too dim on the PC. It makes
+  the color brighter, up to full brightness. Thus a weak flash on the strip becomes a bright
+  flash on your fans or ring. 1.0× makes no change.
+- **Min brightness** (0% to 100%) — this lifts *dim* colors, so the PC does not go almost
+  dark between flashes. Bright flashes still show above it. A dim color keeps its color (a
+  dim red becomes a brighter red). A fully black frame stays **off** — the floor does not
+  make black into light. 0% follows WLED exactly.
 
-  The three sliders compose: **brightness** sets the overall level, **gain** amplifies the
-  flashes, **min brightness** lifts dim content. All three are remembered between runs.
-- **When off, show colour** — by default an off/black LED (a dark part of the strip, or WLED
-  turned off) is simply **off**. Tick this and pick a colour to show a static idle glow there
-  instead. The colour to the right of the checkbox is the picker.
-- **Start with Windows** — Options → *Launch at login* and *Start minimised to tray* for
-  a set-and-forget background mirror. *Auto-mirror on launch* starts mirroring
-  automatically once everything is ready.
-- **Multiple WLEDs / changed IP** — just edit the WLED host field and Apply; the running
-  backend retargets live, no restart.
+  The three sliders work together. **Brightness** sets the level. **Gain** makes flashes
+  brighter. **Min brightness** lifts dim colors. The app keeps all three between runs.
+- **When off, show color** — by default, an off or black LED stays off. This is for a dark
+  part of the strip, or for WLED turned off. To show a color there, select the checkbox and
+  pick a color. The color button is to the right of the checkbox.
+- **Start with Windows** — in Options, select *Launch at login* and *Start minimised to
+  tray*. This makes a background mirror. *Auto-mirror on launch* starts the mirror when the
+  app is ready.
+- **More than one WLED, or a new IP** — type the new address in the WLED host field and click
+  **Apply**. The helper changes to the new address immediately. You do not restart it.
 
 ## 5. Device notes
 
-- **NZXT Kraken ring** — only lights in a single-colour mode. The app **auto-switches it
-  to Static** when mirroring so the ring follows WLED. (Its default *Direct* mode won't
-  light the ring.)
-- **GPU (RTX)** — detected, but its RGB only physically lights when **OpenRGB runs as
-  administrator**. The app keeps OpenRGB non-elevated on purpose (elevated OpenRGB probes
-  the motherboard SMBus/DDR5, which risks the RAM). The GPU row is annotated accordingly.
-  If you want GPU lighting, start OpenRGB as admin yourself before launching the app —
-  accepting that trade-off.
-- **MSI Mystic Light / ARGB fans** — motherboard ARGB zones can read as 0 LEDs after an
-  OpenRGB restart, and each JARGB header is its own zone. Advanced → set the **zone size**
-  (LEDs per header — default **8**, e.g. an 8-LED JARGB fan) and click **Size zones**.
-- **Mouse** and other USB-HID devices — driven directly, no elevation needed.
+- **NZXT Kraken ring** — it shows light only in a single-color mode. The app sets it to
+  Static automatically when it mirrors, so the ring follows WLED. Its default *Direct* mode
+  does not light the ring.
+- **GPU (RTX)** — OpenRGB finds it, but the RGB shows light only when you run **OpenRGB as
+  administrator**. By default the app runs OpenRGB without administrator rights. (An elevated
+  OpenRGB reads the motherboard SMBus/DDR5, which is a risk to the RAM.) The device list
+  marks the GPU row. To light the GPU, start OpenRGB as administrator before you start the
+  app. This is your choice.
+- **MSI Mystic Light / ARGB fans** — a motherboard ARGB zone can show 0 LEDs after an OpenRGB
+  restart. Each JARGB header is one zone. In Advanced, set the **zone size** (the number of
+  LEDs for each header — the default is **8**, for example an 8-LED JARGB fan). Then click
+  **Size zones**.
+- **Mouse** and other USB devices — the app drives them directly. They do not need
+  administrator rights.
 
-### Smoothness & latency
+### Smoothness and delay
 
-The PC follows WLED's live output at its **real frame rate** (event-driven — no fixed cap),
-with Nagle disabled on the internal links for low latency. If it still looks choppy, the
-limit is upstream: the WLED live-view WebSocket updates slower than a direct feed. For the
-smoothest, lowest-latency result, stream from LedFx straight to this PC via **DDP (4048)**
-or **E1.31/sACN (5568)** — those carry the full frame rate.
+The PC follows the live output of WLED at its real frame rate. There is no fixed limit. The
+internal links use TCP_NODELAY for a low delay. If the light is still not smooth, the limit
+is the source: the WLED live-view WebSocket sends fewer frames than a direct feed. For the
+smoothest result and the lowest delay, send the data from LedFx directly to this PC with
+**DDP (4048)** or **E1.31/sACN (5568)**. These carry the full frame rate.
 
-## 6. Troubleshooting
+## 6. Problems and fixes
 
-| Symptom | Fix |
+| Problem | Fix |
 |---|---|
-| **OpenRGB dot red** | OpenRGB not found/– install it, or start it manually: `OpenRGB.exe --server`. The app retries automatically. |
-| **Only some devices listed** (e.g. Kraken/mouse missing) | USB-HID devices enumerate a few seconds after OpenRGB starts. The app re-scans automatically at ~6s and ~13s; you can also hit Advanced → **Rescan**. |
-| **Backend dot red** | Java isn't found. Install a JDK (21+) or set `JAVA_HOME`. The app backs off and retries. |
-| **WLED dot red / “unreachable”** | Wrong host. Enter the IP directly (`192.168.x.x`) in the WLED host field and Apply. |
-| **WLED dot amber** | WLED is **off** — the PC goes off too (or shows your idle colour if *When off, show colour* is ticked). Turn WLED on. |
-| **PC RGB stays white/lit when WLED is black** | Fixed in v1.1 (black → off). If you *want* a colour when off, tick *When off, show colour*. |
-| **Fans/GPU/Kraken flicker or fight** | Close other RGB software (NZXT CAM, SignalRGB, iCUE, Synapse) — they grab the same devices. |
-| **Kraken ring stays dark** | Make sure it's in **Static** (the app sets this automatically while mirroring; or double-click its Static mode row). |
+| **OpenRGB dot is red** | OpenRGB is not found. Install it, or start it: `OpenRGB.exe --server`. The app tries again automatically. |
+| **Only some devices show** (for example, no Kraken or mouse) | USB devices appear a few seconds after OpenRGB starts. The app scans again at about 6 s and 13 s. You can also click Advanced → **Rescan**. |
+| **Backend dot is red** | Java is not found. Install a JDK (21+) or set `JAVA_HOME`. The app waits and tries again. |
+| **WLED dot is red ("unreachable")** | The address is wrong. Type the IP directly (`192.168.x.x`) in the WLED host field. Click **Apply**. |
+| **WLED dot is amber** | WLED is **off**, so the PC goes off too. (Or it shows your idle color, if *When off, show color* is on.) Turn WLED on. |
+| **The PC RGB stays white or lit when WLED is black** | Version 1.1 fixed this (black is now off). To show a color when off, select *When off, show color*. |
+| **The fans, GPU, or Kraken flicker or fight** | Close other RGB programs (NZXT CAM, SignalRGB, iCUE, Synapse). They take the same devices. |
+| **The Kraken ring stays dark** | Make sure it is in **Static** mode. The app sets this automatically when it mirrors. Or double-click its Static mode row. |
 
-## 7. Headless / scripting
+## 7. Command-line options
 
-The exe also runs a few one-shot commands (they exit immediately, before the GUI):
+The app also runs some one-shot commands. Each command exits immediately, before the window
+opens.
 
 ```
 wled_pc_rgb.exe --set <deviceIndex> <#rrggbb> [brightness%]   # set one device
-wled_pc_rgb.exe --setmode <deviceIndex> <modeIndex>           # switch a device's mode
+wled_pc_rgb.exe --setmode <deviceIndex> <modeIndex>           # change the mode of a device
 wled_pc_rgb.exe --setall <#rrggbb> [brightness%]              # set every device
-wled_pc_rgb.exe --maxzones                                    # size resizable zones to 24
-wled_pc_rgb.exe --mirror <seconds> [spread]                   # run the mirror for N seconds
-wled_pc_rgb.exe --minimized                                   # launch straight to the tray
+wled_pc_rgb.exe --maxzones                                    # set resizable zones to the default
+wled_pc_rgb.exe --mirror <seconds> [spread|wrap]              # run the mirror for N seconds
+wled_pc_rgb.exe --minimized                                   # start in the tray
 ```
 
-A device scan dump is written to `%TEMP%\wled-pc-rgb-scan.txt` on every scan.
+The app writes a device scan file to `%TEMP%\wled-pc-rgb-scan.txt` at each scan.

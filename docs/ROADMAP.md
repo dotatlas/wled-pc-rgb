@@ -1,41 +1,41 @@
 # Roadmap
 
-Where **wled-pc-rgb** is and where it might go. For the released version history, see the
-[CHANGELOG](../CHANGELOG.md).
+This is where **wled-pc-rgb** is now, and where it can go. For the list of released
+versions, read the [CHANGELOG](../CHANGELOG.md).
 
-## Done — the mirror is feature-complete
+## Done — the mirror is complete
 
-- ✅ Mirror WLED's live output onto PC RGB in real time (via OpenRGB).
-- ✅ Follows WLED effects, solid colours, and **LedFx** audio-reactive takeovers.
-- ✅ Multiple live sources, auto-selected: WLED live-view, **DDP** (UDP 4048), and
-  **E1.31/sACN** (UDP 5568) straight to the PC.
-- ✅ Per-device mirror toggle.
-- ✅ Tone controls: PC brightness, flash gain, minimum-brightness floor, idle colour.
-- ✅ Positional mapping: *Spread* (whole strip per device) and *Wrap* (strip across all
-  devices).
-- ✅ Configurable ARGB zone size.
-- ✅ Auto-launch of OpenRGB + the WLED helper, system tray, start-at-login /
-  start-minimised, and persisted settings.
-- ✅ Portable, self-contained Windows release.
+- ✅ Show the live output of WLED on the PC RGB devices in real time (through OpenRGB).
+- ✅ Follow WLED effects, colors, and **LedFx** audio-reactive patterns.
+- ✅ More than one live source, selected automatically: the WLED live-view, **DDP** (UDP
+  4048), and **E1.31/sACN** (UDP 5568) directly to the PC.
+- ✅ A switch for each device.
+- ✅ Color controls: PC brightness, flash gain, minimum brightness, and an idle color.
+- ✅ Position modes: *Spread* (the full strip on each device) and *Wrap* (the strip across
+  all devices).
+- ✅ A zone size that you can set.
+- ✅ The app starts OpenRGB and the WLED helper, stays in the tray, can start at login or
+  start small, and keeps the settings.
+- ✅ A portable, one-folder Windows release.
 
-## Ideas / help wanted
+## Ideas — help is welcome
 
-These are optional extras — the mirror works fully without them. Contributions welcome.
+These are extra options. The mirror works fully without them.
 
-- **In-house audio reactivity** — a WASAPI + FFT source so the PC can react to system audio
-  directly, without needing LedFx running. (Would be a distinct mode from the WLED mirror.)
-- **NZXT Kraken Elite LCD** — drive the 640×640 screen (static image, then animation). This
-  needs a manual [Zadig](https://zadig.akeo.ie) WinUSB driver bind, which can interfere with
-  NZXT CAM — so it would ship as an isolated, opt-in module.
-- **Free-form mapping editor** — assign specific strip regions to specific device zones
-  (Spread/Wrap cover the common cases today).
-- **A proper installer** — an [Inno Setup](https://jrsoftware.org/isinfo.php) script exists
-  in `packaging/`; a built, optionally-signed installer could be published alongside the zip.
-- **More platforms** — the stack (Qt + OpenRGB + a JVM) is cross-platform; only a
-  Windows build is produced and tested today.
+- **In-house audio** — a WASAPI and FFT source, so the PC can react to the sound of the PC
+  directly, without LedFx. This is a separate mode from the WLED mirror.
+- **NZXT Kraken Elite LCD** — drive the 640×640 screen (a static image first, then
+  animation). This needs a manual [Zadig](https://zadig.akeo.ie) WinUSB driver change, which
+  can stop NZXT CAM. So it is a separate, optional part.
+- **A mapping editor** — set which part of the strip goes to which device zone. (Spread and
+  Wrap cover the common cases now.)
+- **An installer** — there is an [Inno Setup](https://jrsoftware.org/isinfo.php) script in
+  `packaging/`. You can build and publish an installer with the zip.
+- **More systems** — the parts (Qt, OpenRGB, and a JVM) run on more than one system. But only
+  a Windows build exists and is tested now.
 
 ## Not planned
 
-- **RAM / DDR5 (SMBus) RGB.** Writing to DIMM SMBus carries a real SPD-corruption / brick
-  risk on some kits, so the app deliberately never touches it and keeps OpenRGB
-  non-elevated. Everything else works without it.
+- **RAM / DDR5 (SMBus) RGB.** To write to the DIMM SMBus is a risk to the memory on some
+  memory kits. So the app never writes to it, and it keeps OpenRGB without administrator
+  rights. Everything else works without it.
