@@ -1,106 +1,132 @@
 # wled-pc-rgb
 
-A native, cross-platform tool that makes this PC's RGB hardware a **mirror of a
-WLED-driven room**. The defining idea is the data-flow direction:
+![license](https://img.shields.io/badge/license-MIT-blue)
+![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
+![built with Qt 6](https://img.shields.io/badge/built%20with-Qt%206-41CD52)
+![engine: OpenRGB](https://img.shields.io/badge/engine-OpenRGB-cc0000)
+
+**Make your PC's RGB a live mirror of your WLED lights.** Whatever your WLED strip is
+showing — an effect, a solid colour, or a **LedFx audio-reactive** takeover — is
+reproduced on your PC's fans, GPU, AIO, mouse and motherboard in real time.
 
 > **WLED is the master. The PC follows.**
-> The program reads WLED's *live rendered output* back and applies it to the PC's RGB
-> devices — so whatever WLED shows (a WLED effect, a color you set, or an external
-> takeover like **LedFx making it audio-reactive**) is reproduced on your fans, GPU,
-> and (optionally) RAM automatically. Pipeline: `program → WLED → back to program`.
+> The app reads WLED's *live rendered output* and applies it to your PC devices. It never
+> invents its own effect — it shows exactly what WLED shows, so your whole room and rig
+> stay in sync automatically.
 
-- **C++ app** (Qt) — device detection, the device-inspector GUI, the system tray, and
-  the **mapper** that distributes WLED's live pixels across PC device zones. Talks to
-  hardware through a bundled **headless OpenRGB** over its SDK (TCP `6742`).
-- **Java backend** — a headless WLED microservice: discovers the ESP32, **controls** it
-  (JSON/WebSocket), and **reads its live output back** via the WebSocket live-view
-  (`{"lv":true}`), forwarding frames to the C++ side.
-- Two processes over **loopback IPC** — for fault isolation (a crashing USB/SMBus driver
-  must not take down the JVM).
+---
 
-See [docs/DESIGN.md](docs/DESIGN.md) for architecture and [docs/ROADMAP.md](docs/ROADMAP.md)
-for the phase plan.
+## Features
 
-## Target hardware (this machine, verified)
+- 🎨 **Real-time mirror** of WLED's live output onto every RGB device OpenRGB can see.
+- 🎵 **Audio-reactive via LedFx** — reads WLED's output back, so LedFx takeovers show on
+  the PC too. Point LedFx straight at this PC (DDP or E1.31/sACN) for the lowest latency;
+  the app auto-selects the fastest available source.
+- ✅ **Per-device toggle** — choose exactly which devices mirror; the rest are left alone.
+- 🎚️ **Tone controls** — independent PC brightness, a **flash gain** multiplier to make
+  dim flashes pop, and a **minimum-brightness floor** to lift dim content.
+- 🌑 **Off means off** — a black frame turns the PC off, or shows an **idle colour** you pick.
+- 🌈 **Positional mapping** — *Spread* the whole strip across each device, or *Wrap* it
+  once across all devices so the colour flows from one to the next.
+- 🚀 **Just works** — auto-launches OpenRGB and its WLED helper, lives in the system tray,
+  optional start-at-login / start-minimised, and remembers all your settings.
+- 🔒 **Safe by design** — never touches RAM/SMBus (no DIMM-brick risk) and never changes
+  WLED's own brightness.
+- 📦 **Portable & self-contained** — a single unzip-and-run folder. MIT licensed.
 
-| Part | Identity | Path |
-|---|---|---|
-| Motherboard | MSI PRO X870E-P WIFI (MS-7E70), AMD X870E | ARGB header → RS120 fans, via OpenRGB (Mystic Light) |
-| GPU | NVIDIA RTX 5070 Ti (`10DE:2C05` / `1462:5315`) | GPU I2C `0x68`, OpenRGB **1.0 RC** detector |
-| RAM | 2× Corsair Vengeance RGB DDR5 `CMH32GX5M2M6000Z36` | SMBus — **deferred / gated** (DDR5 brick risk) |
-| AIO | NZXT Kraken Elite V2 (`1E71:3012`) | RGB ring (USB-HID) + 640×640 LCD (bespoke, stretch) |
-| Room | ESP32 running stock WLED | Live-view read + JSON/WebSocket control |
+## Requirements
 
-## Status
-
-**v1.0 — working end-to-end.** The mirror is complete: the app auto-launches OpenRGB
-(non-elevated, so RAM/SMBus is never touched) and the Java WLED backend, detects the
-PC's RGB devices, and mirrors WLED's live output onto the ticked devices in real time —
-including LedFx audio-reactive takeovers (via the WLED live-view, or lower-latency DDP on
-UDP 4048 / E1.31 sACN on UDP 5568 straight to this PC). Colour can be tuned per-PC with
-independent brightness, a flash-gain multiplier and a never-off minimum-brightness floor,
-and mapped positionally (Spread the whole strip per device, or Wrap it once across all
-devices). The NZXT Kraken ring is driven via its Static mode; the mouse and motherboard
-ARGB fans light directly; the GPU is detected (its RGB needs OpenRGB run as admin).
-Shipped as a self-contained, MIT-licensed portable Windows zip.
-
-- **Full setup + usage:** see **[docs/USAGE.md](docs/USAGE.md)**.
-- **Phase plan / history:** see [docs/ROADMAP.md](docs/ROADMAP.md) (Phases 0/1/3 done,
-  Phase 4 DDP tap done; Phase 2 RAM scrapped for safety; Kraken LCD deferred — needs a
-  manual Zadig/WinUSB driver swap).
-
-The dev-toolchain notes below are for building from source.
-
-## Prerequisites (Windows, Python-free)
-
-Nothing dev-related is installed on this machine yet. Recommended toolchain:
-
-**C++ / Qt (via MSYS2 + MinGW-w64 UCRT64):**
-```bash
-winget install MSYS2.MSYS2
-```
-Then in the **MSYS2 UCRT64** shell:
-```bash
-pacman -Syu
-pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-qt6-base
-```
-
-**Java (JDK 21 LTS):**
-```bash
-winget install Microsoft.OpenJDK.21
-```
-
-**OpenRGB — the device engine.** Install the **1.0 release-candidate / experimental**
-build (NOT 0.9 stable — 0.9 lacks the RTX 5070 Ti detector), then run it headless:
-```bash
-OpenRGB.exe --server --noautoconnect
-```
-Close/stop **iCUE, MSI Center/Mystic Light, and NZXT CAM** (and their background
-services) first — concurrent access to the same bus/device causes flicker, lost
-detection, and (on the SMBus) corruption.
+| Need | Why |
+|---|---|
+| **Windows 10/11 (64-bit)** | the shipped build |
+| **[OpenRGB](https://openrgb.org)** | the device engine — the app drives your hardware through it (auto-launched if installed) |
+| **A JDK 21+** ([Adoptium](https://adoptium.net)) | runs the small bundled WLED helper (auto-launched) |
+| **A WLED device** on your network | the thing you're mirroring |
 
 ## Install & run
 
-Download the latest `wled-pc-rgb-vX.Y-win64.zip`, unzip anywhere, and run
-`wled_pc_rgb.exe`. It's fully self-contained (Qt + all DLLs bundled). You only need two
-things installed that the app launches for you — a **JDK 21+** and **OpenRGB** — see
-**[docs/USAGE.md](docs/USAGE.md)** for the full setup, use cases (LedFx, spread/wrap,
-gain/floor), and troubleshooting.
+1. Download the latest **`wled-pc-rgb-vX.Y-win64.zip`** from the
+   [Releases](https://github.com/dotatlas/wled-pc-rgb/releases) page.
+2. Unzip it anywhere and run **`wled_pc_rgb.exe`** — it's fully self-contained (Qt and all
+   DLLs are bundled; no installer, no PATH setup).
+3. Make sure OpenRGB and a JDK are installed (see above). The app launches both for you.
+
+## Quick start
+
+1. Watch the three **setup dots** at the top go green: `OpenRGB · Backend · WLED`.
+2. Type your **WLED host** (`wled.local` or its IP) and click **Apply**.
+3. **Tick the devices** you want to mirror.
+4. Click **▶ Mirror WLED**.
+5. Close the window — it keeps running in the tray.
+
+The full walkthrough, every control, all the use cases, and troubleshooting live in
+**[docs/USAGE.md](docs/USAGE.md)**.
+
+## How it works
+
+Three small pieces, so a crashing device driver can never take down the whole app:
+
+```
+  WLED (ESP32)  ──live output──►  Java helper  ──frames (loopback)──►  C++ app (Qt)
+       ▲                          (WebSocket /                          │  maps colours
+       │  control (colour only)    DDP / sACN)                          ▼  to devices
+       └───────────────────────────────────────────────  OpenRGB (SDK, TCP 6742)
+                                                              └─► fans · GPU · AIO · mouse
+```
+
+- **C++ app (Qt)** — the GUI, tray, device list, colour mapping, and the OpenRGB client.
+- **Java helper** — talks to WLED: reads its live output and forwards frames; sends colour
+  commands. A tiny headless microservice the app starts automatically.
+- **OpenRGB** — does the actual, already-solved device I/O, spoken to over its network SDK.
+
+Architecture details and design decisions are in **[docs/DESIGN.md](docs/DESIGN.md)**.
 
 ## Build from source
 
-Windows, via MSYS2 UCRT64 (gcc + cmake + ninja + qt6-base — see Prerequisites above):
+Windows, using MSYS2 UCRT64 (`gcc`, `cmake`, `ninja`, `qt6-base`):
+
 ```bash
+# in an MSYS2 UCRT64 shell
+pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake \
+                   mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-qt6-base
 cmake -S core-cpp -B core-cpp/build -G Ninja
-cmake --build core-cpp/build           # a POST_BUILD step bundles the full DLL closure
+cmake --build core-cpp/build          # a POST_BUILD step bundles the full DLL closure
 ```
-The self-contained app lands in `core-cpp/build/app/` (exe + `WledBackend.java` + DLLs).
-`powershell -File scripts/package-win.ps1` zips it into `dist/` as a portable release.
-The Java backend is single-file (no build step); it's launched by the app automatically.
 
-## License
+The self-contained app lands in `core-cpp/build/app/`. Run `scripts/package-win.ps1` to
+zip a portable release into `dist/`. The Java helper is a single source file launched by
+the app — no separate build step. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for more.
 
-MIT — see [LICENSE](LICENSE). This project bundles the **Qt 6** runtime (LGPL v3, as
-separate replaceable DLLs) and talks to **OpenRGB** over its network SDK (OpenRGB is a
-separate GPL program that you install; its code is not linked in). Other bundled DLLs are
-the MinGW-w64 runtime and common permissive libraries (zlib, libpng, freetype, …).
+## Compatibility
+
+Device support comes from **OpenRGB**, so anything OpenRGB detects can be mirrored. A few
+device-specific notes (all covered in [docs/USAGE.md](docs/USAGE.md)):
+
+- **NZXT Kraken ring** lights only in a single-colour mode — the app switches it to Static
+  automatically while mirroring.
+- **GPU RGB** is detected but only lights when OpenRGB is run as administrator (the app
+  keeps OpenRGB non-elevated by default, so it never probes the motherboard SMBus/RAM).
+- **Motherboard ARGB headers** may need a one-click zone resize (configurable, default 8
+  LEDs per header).
+
+Developed and tested on an MSI X870E board, RTX 5070 Ti, NZXT Kraken Elite, a Razer mouse,
+and an ESP32 running stock WLED — but it isn't tied to that hardware.
+
+## Roadmap
+
+See **[docs/ROADMAP.md](docs/ROADMAP.md)**. The mirror is feature-complete; the open ideas
+are optional extras (in-house audio reactivity, NZXT Kraken LCD).
+
+## Contributing
+
+Issues and pull requests are welcome — see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+## License & credits
+
+Released under the **MIT License** — see [LICENSE](LICENSE).
+
+Built on the shoulders of great open-source projects: **[OpenRGB](https://openrgb.org)**
+(device engine), **[WLED](https://kno.wled.ge)** (the master light controller),
+**[LedFx](https://www.ledfx.app)** (audio reactivity), and **[Qt](https://www.qt.io)**
+(the GUI, bundled as LGPL v3 replaceable DLLs). OpenRGB is a separate GPL program the app
+talks to over its network SDK; its code is not linked in.
