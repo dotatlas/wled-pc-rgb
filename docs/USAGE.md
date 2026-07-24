@@ -59,7 +59,8 @@ Mirror, and Quit.
       LEDs.
     - **Wrap (strip across all devices)** — the app puts the strip one time across all the
       selected devices in sequence. The color moves from one device to the next (for example
-      GPU → fans → Kraken ring → mouse). The Kraken ring shows the average of its part.
+      GPU → fans → mouse). The Kraken ring runs its own pipeline, so it always shows the full
+      strip across its 24 LEDs (a moving, per-LED gradient).
   The two modes are exclusive. Turn both off for one average color on all devices.
 - **Brightness** — one slider for the whole mirror. It makes the PC colors darker or
   brighter. 100% shows the WLED colors as they are. It changes the PC only; it does not
@@ -76,16 +77,21 @@ Mirror, and Quit.
   is hidden from the device list, because it does not use OpenRGB. In Advanced, the "Hidden
   (driven directly)" dropdown shows these, and "Re-add to scan" puts one back so OpenRGB
   drives it instead. This is for the session only; it resets when you close the app.
-- **NZXT Kraken (ring and LCD)** — the app does **not** control the Kraken. Its ring cannot
-  update live over USB (the device throttles streamed color, so it lags badly), and only its
-  own built-in effects animate smoothly — which cannot mirror WLED. So the app **hides the
-  Kraken** from the device list and leaves it to **NZXT CAM** (or another program) to control
-  the ring and the LCD. If you want OpenRGB to drive it instead, re-add it in Advanced.
-- **GPU (RTX)** — OpenRGB finds it, but the RGB shows light only when you run **OpenRGB as
-  administrator**. By default the app runs OpenRGB without administrator rights. (An elevated
-  OpenRGB reads the motherboard SMBus/DDR5, which is a risk to the RAM.) The device list
-  marks the GPU row. To light the GPU, start OpenRGB as administrator before you start the
-  app. This is your choice.
+- **NZXT Kraken Elite (ring)** — the app drives the ring **directly over USB**, with its own
+  pipeline (not OpenRGB). It uses the same commands as SignalRGB for this model (a 512-byte
+  report for each frame), so the ring shows a smooth, per-LED gradient that moves and flashes
+  with WLED, at about 30 frames each second. Because the app drives the ring, the app **hides
+  the Kraken** from the OpenRGB device list (OpenRGB must not fight the app's USB writes). Only
+  one program can control the ring at a time, so **close NZXT CAM and SignalRGB** first — if
+  they run, they fight the app for the ring. (The app does not control the Kraken LCD screen;
+  CAM controls that.) To hand the ring to OpenRGB instead, re-add the Kraken in Advanced.
+- **GPU (RTX / all GPUs)** — OpenRGB finds it, but the RGB shows light only when you run
+  **OpenRGB as administrator**. GPU RGB is on the SMBus, and the SMBus needs administrator
+  rights. By default the app runs OpenRGB without administrator rights (an elevated OpenRGB
+  also reads the motherboard SMBus/DDR5, which is a risk to the RAM). The device list marks
+  the GPU row. To light the GPU, start OpenRGB as administrator before you start the app. This
+  is your choice. When it is on, the GPU is now smooth (the app no longer floods it — see
+  below).
 - **MSI Mystic Light / ARGB fans** — a motherboard ARGB zone can show 0 LEDs after an OpenRGB
   restart. Each JARGB header is one zone. In Advanced, set the **zone size** (the number of
   LEDs for each header — the default is **8**, for example an 8-LED JARGB fan). Then click
@@ -112,7 +118,7 @@ smoothest result and the lowest delay, send the data from LedFx directly to this
 | **WLED dot is amber** | WLED is **off**, so the PC goes off too. (Or it shows your idle color, if *When off, show color* is on.) Turn WLED on. |
 | **The PC RGB stays white or lit when WLED is black** | Version 1.1 fixed this (black is now off). To show a color when off, select *When off, show color*. |
 | **The fans, GPU, or Kraken flicker or fight** | Close other RGB programs (NZXT CAM, SignalRGB, iCUE, Synapse). They take the same devices. |
-| **The Kraken ring stays dark** | Make sure it is in **Static** mode. The app sets this automatically when it mirrors. Or double-click its Static mode row. |
+| **The Kraken ring stays dark, or fights another program** | The app drives the ring directly over USB. Close **NZXT CAM** and **SignalRGB** — if they run, they take the ring. Then start Mirror again. Test the ring on its own with `wled_pc_rgb.exe --krakenspin`. |
 
 ## 7. Command-line options
 
@@ -125,6 +131,9 @@ wled_pc_rgb.exe --setmode <deviceIndex> <modeIndex>           # change the mode 
 wled_pc_rgb.exe --setall <#rrggbb> [brightness%]              # set every device
 wled_pc_rgb.exe --maxzones                                    # set resizable zones to the default
 wled_pc_rgb.exe --mirror <seconds> [spread|wrap]              # run the mirror for N seconds
+wled_pc_rgb.exe --kraken <#rrggbb>                            # set the Kraken ring to one color
+wled_pc_rgb.exe --krakencycle [seconds]                       # sweep the ring through the colors
+wled_pc_rgb.exe --krakenspin [seconds]                        # a moving rainbow (the per-LED test)
 wled_pc_rgb.exe --minimized                                   # start in the tray
 ```
 

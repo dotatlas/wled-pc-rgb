@@ -9,6 +9,7 @@
 #include <QList>
 #include <QStringList>
 #include "orgb_client.h"
+#include "kraken_driver.h"
 
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -41,12 +42,16 @@ protected:
 
 private:
     void startOpenRGB();
+    QString findOpenRGB();             // locate the OpenRGB exe (shared by normal + elevated launch)
+    void startOpenRGBElevated();       // restart OpenRGB as admin so GPU (SMBus) RGB lights
     void startBackend();
     void connectHostFromField();   // apply the WLED host field + restart backend
     QList<int> gatherChecked();
     void repopulateBlacklist();
     void maybeAutoMirror();
     void pushIncluded();
+    bool krakenSelected() const;       // is the Kraken row present + ticked (so we HID-drive its ring)?
+    void syncKrakenDriving();          // open/close the Kraken HID pipeline to match krakenSelected()
     void activateMode(QTreeWidgetItem*);
     void setDot(QLabel* dot, int level, const QString& hint);   // 0 grey 1 red 2 amber 3 green
     void refreshMirrorGate();
@@ -62,6 +67,7 @@ private:
     QLabel*  swatchW_ = nullptr; QLabel* swatchP_ = nullptr;
     QSlider* bright_  = nullptr;
     QPushButton* mirBtn_ = nullptr;
+    QPushButton* elevateBtn_ = nullptr;
     QCheckBox*   spreadChk_ = nullptr;
     QCheckBox*   wrapChk_   = nullptr;
     QSpinBox*    zoneSpin_  = nullptr;
@@ -75,6 +81,10 @@ private:
     IpcClient*  ipc_ = nullptr;
     QProcess*   backend_ = nullptr;
     OrgbMirror  mirror_;
+    KrakenDriver kraken_;         // direct-HID pipeline for the NZXT Kraken Elite ring (SignalRGB 0x26 protocol)
+    bool krakenDriving_ = false;  // true while we own the ring over HID this mirror session
+    bool elevating_ = false;        // true only while an OpenRGB elevation attempt is in flight (click→settle)
+    bool openrgbElevated_ = false;  // true after a successful elevation (an elevated instance should be up)
     bool  mirroring_ = false, spread_ = false, wrap_ = false, building_ = false, stopping_ = false;
     bool  openrgbReady_ = false, backendUp_ = false, wledReachable_ = false, wledOn_ = true;
     int   zeroRetries_ = 0, backendFails_ = 0, backendDelayMs_ = 1500;

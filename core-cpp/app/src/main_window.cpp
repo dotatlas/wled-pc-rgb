@@ -40,8 +40,10 @@
 #include <QMenu>
 #include <QAction>
 #include <QStyle>
+#include <QMessageBox>
 #include <QSignalBlocker>
 #include <QStringList>
+#include <memory>
 
 namespace {
 constexpr int kDeviceIndexRole = Qt::UserRole + 1;
@@ -73,11 +75,12 @@ void paintSwatch(QLabel* l, const QColor& c) {
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     QSettings s;
     wledHost_ = s.value("wled/host", "wled.local").toString();
-    // The NZXT Kraken is left to its own software (e.g. NZXT CAM): its ring can't be updated
-    // live over HID (the device throttles streamed colour badly), so we don't drive it at
-    // all. Blacklisting hides it from the scan and keeps OpenRGB off it, so CAM owns it.
-    // Session only — resets on restart; re-add via Advanced to let OpenRGB drive it instead.
-    blacklist_ = { "kraken" };
+    // The user-facing blacklist (Advanced) starts empty — the Kraken is NOT hidden any more; it
+    // shows in the device list like everything else. It is still driven by its OWN HID pipeline
+    // (opcode 0x26, 512-byte reports — SignalRGB's protocol), and OpenRGB always skips it
+    // internally (see setMirroring) so the two never fight. Ticking/unticking the Kraken row
+    // turns its HID ring on/off; unticking hands the ring back to NZXT CAM.
+    blacklist_ = {};
 
     setWindowTitle(baseTitle_);
     resize(660, 640);
@@ -122,6 +125,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
       sr->addStretch(1);
       sg->addLayout(sr, 2, 0, 1, 3); }
 
+    // GPU RGB is on the SMBus, which OpenRGB can only reach with admin rights. This button
+    // restarts OpenRGB elevated on demand (a confirmation surfaces the DDR5/SMBus tradeoff).
+    elevateBtn_ = new QPushButton("⛊  Elevate OpenRGB to admin (lights the GPU)", setup);
+    elevateBtn_->setToolTip("Restart OpenRGB with administrator rights so the GPU RGB lights.\n"
+                            "Admin OpenRGB also scans the motherboard SMBus (DDR5) — see the confirmation.");
+    connect(elevateBtn_, &QPushButton::clicked, this, &MainWindow::startOpenRGBElevated);
+    sg->addWidget(elevateBtn_, 3, 0, 1, 3);
+
     // --- device tree ----------------------------------------------------------
     status_ = new QLabel("Tick the devices to mirror, then click “Mirror WLED”.", central);
     auto* tip = new QLabel("Each ticked device follows WLED live while mirroring is on. The app puts every "
@@ -136,7 +147,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(tree_, &QTreeWidget::itemChanged, this, [this](QTreeWidgetItem* it, int col) {
         if (building_ || col != 0 || !it->data(0, kDeviceIndexRole).isValid()) return;
         if (!(it->flags() & Qt::ItemIsUserCheckable)) return;
-        if (mirroring_) pushIncluded();          // in-session opt-out; devices default all-on each scan
+        if (mirroring_) { pushIncluded(); syncKrakenDriving(); }   // opt-out; also (un)owns the ring
         refreshMirrorGate();
     });
     connect(tree_, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* it, int) {
@@ -328,6 +339,25 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         }
         if (!mirroring_) return;
 
+        // Scaled per-LED strip, built once per frame and shared by every pipeline below.
+        QList<QColor> sc;
+        if (!off) { sc.reserve(cols.size()); for (const QColor& c : cols) sc.push_back(scale(c, b)); }
+
+        // --- Kraken pipeline (direct HID) -------------------------------------
+        // Its own device-specific path, independent of the OpenRGB socket: always per-LED so
+        // the ring shows a moving gradient (the driver resamples the strip to its 24 LEDs).
+        if (krakenDriving_) {
+            static QElapsedTimer kReopen;                  // self-heal: a dropped write closes the handle
+            if (!kraken_.isOpen() && (!kReopen.isValid() || kReopen.elapsed() > 2000)) {
+                kReopen.restart(); kraken_.open();
+            }
+            if (kraken_.isOpen()) {
+                if (off || sc.isEmpty()) kraken_.setRingColor(QColor(0, 0, 0));   // stay in step with the black OpenRGB devices
+                else                     kraken_.setRing(sc);
+            }
+        }
+
+        // --- OpenRGB pipeline (fans, GPU, mouse, motherboard) -----------------
         static QElapsedTimer reopen;                       // self-heal the mirror socket
         if (!mirror_.alive() && (!reopen.isValid() || reopen.elapsed() > 2000)) {
             reopen.restart(); QString e;
@@ -338,8 +368,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         if (off) { mirror_.apply(QColor(0, 0, 0)); return; }   // WLED off → PC off
 
         if (wrap_ || spread_) {                            // positional modes need the per-LED strip
-            QList<QColor> sc; sc.reserve(cols.size());
-            for (const QColor& c : cols) sc.push_back(scale(c, b));
             if (wrap_) mirror_.applyWrapped(sc); else mirror_.applyBuckets(sc);
         } else {
             mirror_.apply(pc);
@@ -373,12 +401,21 @@ void MainWindow::maybeAutoMirror() {
 
 void MainWindow::setMirroring(bool on) {
     if (on && !mirroring_) {
-        mirror_.setSkip(blacklist_);        // OpenRGB ignores blacklisted devices (e.g. the Kraken)
+        // OpenRGB must ALWAYS skip the Kraken — its HID pipeline owns the ring (OpenRGB's HUE2
+        // path is wrong for this model and would fight our writes) — plus any user blacklist.
+        QStringList skip = blacklist_;
+        if (!skip.contains("kraken", Qt::CaseInsensitive)) skip << "kraken";
+        mirror_.setSkip(skip);
         QString e;
         if (!mirror_.open(kHost, kPort, &e)) { status_->setText("⚠  " + e); on = false; }
-        else { mirroring_ = true; pushIncluded(); }
+        else {
+            mirroring_ = true; pushIncluded();
+            syncKrakenDriving();            // start the ring pipeline if the Kraken row is ticked
+        }
     } else if (!on && mirroring_) {
-        mirror_.close(); mirroring_ = false; status_->setText("Mirror off.");
+        mirroring_ = false;
+        syncKrakenDriving();               // stops + blacks the ring, releases the HID handle
+        mirror_.close(); status_->setText("Mirror off.");
     }
     QSignalBlocker b1(mirBtn_), b2(trayMirror_);
     mirBtn_->setChecked(mirroring_);
@@ -421,16 +458,20 @@ void MainWindow::startBackend() {
     setDot(dotB_, 2, "Starting backend…");
 }
 
-void MainWindow::startOpenRGB() {
-    { QTcpSocket probe; probe.connectToHost(kHost, kPort);
-      if (probe.waitForConnected(300)) { probe.abort(); return; } }   // already running — use it
+QString MainWindow::findOpenRGB() {
     const QStringList candidates = {
         QStringLiteral("C:/.software/OpenRGB/OpenRGB Windows 64-bit/OpenRGB.exe"),
         qEnvironmentVariable("ProgramFiles") + "/OpenRGB/OpenRGB.exe",
         qEnvironmentVariable("LOCALAPPDATA") + "/OpenRGB/OpenRGB.exe",
     };
-    QString exe;
-    for (const QString& c : candidates) if (QFile::exists(c)) { exe = c; break; }
+    for (const QString& c : candidates) if (QFile::exists(c)) return c;
+    return QString();
+}
+
+void MainWindow::startOpenRGB() {
+    { QTcpSocket probe; probe.connectToHost(kHost, kPort);
+      if (probe.waitForConnected(300)) { probe.abort(); return; } }   // already running — use it
+    const QString exe = findOpenRGB();
     if (exe.isEmpty()) {
         setDot(dotO_, 1, "OpenRGB not found — install it or start it with --server.");
         status_->setText("OpenRGB not found — install it, or start it manually with --server.");
@@ -445,6 +486,116 @@ void MainWindow::startOpenRGB() {
     // the initial scan can miss them. Re-scan a couple of times to catch late arrivals.
     QTimer::singleShot(6000,  this, &MainWindow::refresh);
     QTimer::singleShot(13000, this, &MainWindow::refresh);
+}
+
+// Is an OpenRGB.exe process running right now? A point-in-time fact (not a port probe), so it
+// can't confuse "elevated instance still slowly binding the SMBus" with "elevated instance died":
+// a binding instance is still a running process. tasklist can enumerate a higher-integrity
+// process from our medium-integrity app. tasklist normally returns in well under 300 ms; we cap
+// the wait at 1 s so a rare hang can't freeze the GUI, and on any timeout/failure assume running
+// — the fail-safe answer, since it only ever makes us DECLINE to launch another instance.
+static bool openRgbProcessRunning() {
+    QProcess p;
+    p.start("tasklist", { "/FI", "IMAGENAME eq OpenRGB.exe", "/NH" });
+    if (!p.waitForFinished(1000)) { p.kill(); p.waitForFinished(200); return true; }
+    return QString::fromLocal8Bit(p.readAllStandardOutput()).contains("OpenRGB.exe", Qt::CaseInsensitive);
+}
+
+// Restart OpenRGB elevated so it can reach the SMBus (the only way the GPU RGB lights). This
+// is the one place we cross the non-elevated default, so it is gated behind an explicit
+// confirmation that names the DDR5/SMBus tradeoff — the user's call, made knowingly.
+void MainWindow::startOpenRGBElevated() {
+    // Re-entry guards are all synchronous and evaluated at click time — deliberately NOT driven by
+    // timers or refresh() state, which would race the (unbounded) UAC prompt and the SMBus bind.
+    if (elevating_) return;               // an attempt is already in flight — ignore the click
+    const QString exe = findOpenRGB();
+    if (exe.isEmpty()) {
+        QMessageBox::warning(this, "OpenRGB not found",
+            "Could not find OpenRGB.exe. Install OpenRGB, then try again.");
+        return;
+    }
+    // If we already elevated, don't kill+relaunch while that instance still exists: a
+    // medium-integrity taskkill can't stop a higher-integrity process, so a second elevated launch
+    // would just collide on port 6742. Decide by whether OpenRGB.exe is actually running (reliable
+    // across integrity levels), NOT by port reachability — a slow SMBus bind must not read as dead.
+    if (openrgbElevated_) {
+        if (openRgbProcessRunning()) {
+            QMessageBox::information(this, "OpenRGB already elevated",
+                "OpenRGB is already running as administrator. If the GPU is not lit yet, give its "
+                "device detection a few seconds.");
+            return;
+        }
+        openrgbElevated_ = false;         // no OpenRGB.exe running — the elevated instance is gone
+    }
+    const auto r = QMessageBox::warning(this, "Elevate OpenRGB to administrator",
+        "This restarts OpenRGB with administrator rights so the GPU RGB lights.\n\n"
+        "Administrator OpenRGB also scans the motherboard SMBus, which includes your DDR5 RAM. "
+        "This app never writes to your RAM, but the SMBus scan itself carries a small risk on "
+        "some memory kits. Only continue if you accept that.\n\nRestart OpenRGB as administrator?",
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (r != QMessageBox::Yes) return;
+
+    elevating_ = true;                              // in-flight: block a second attempt until we settle
+    if (mirroring_) setMirroring(false);            // drop our socket before OpenRGB restarts
+    QProcess::startDetached("taskkill", { "/IM", "OpenRGB.exe", "/F", "/T" });   // stop the non-elevated instance
+    setDot(dotO_, 2, "Restarting OpenRGB as administrator…");
+    status_->setText("Restarting OpenRGB as administrator — accept the Windows UAC prompt.");
+
+    // Run the elevated launch through a TRACKED powershell process so its EXIT CODE reports the UAC
+    // outcome deterministically (0 = accepted+launched, 1 = declined/failed). Start-Process returns
+    // as soon as the process is created (right after UAC), independent of how long the SMBus bind
+    // then takes — so this never races a slow accept or a slow bind.
+    const QString psCmd = QString(
+        "try { Start-Process -FilePath '%1' -ArgumentList '--server','--noautoconnect' -Verb RunAs -ErrorAction Stop; exit 0 } catch { exit 1 }")
+        .arg(QDir::toNativeSeparators(exe));
+    auto* ps = new QProcess(this);
+    ps->setProgram("powershell");
+    ps->setArguments({ "-NoProfile", "-WindowStyle", "Hidden", "-Command", psCmd });
+    auto handled = std::make_shared<bool>(false);
+    auto settle = [this, ps, handled](bool launched) {
+        if (*handled) return;
+        *handled = true;
+        ps->deleteLater();
+        elevating_ = false;
+        if (launched) {
+            openrgbElevated_ = true;                          // accepted — an elevated instance is (coming) up
+            status_->setText("OpenRGB restarting as administrator — reconnecting…");
+            QTimer::singleShot(2000, this, &MainWindow::refresh);   // refresh self-retries every ~2s until it binds
+        } else {
+            status_->setText("Elevation cancelled — OpenRGB restarted normally (the GPU stays dark).");
+            startOpenRGB();                                   // decline/fail — restore a non-elevated instance
+        }
+    };
+    connect(ps, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [settle](int code, QProcess::ExitStatus) { settle(code == 0); });
+    connect(ps, &QProcess::errorOccurred, this,
+            [settle](QProcess::ProcessError e) { if (e == QProcess::FailedToStart) settle(false); });
+    QTimer::singleShot(1200, this, [ps]{ ps->start(); });   // let the kill land, then prompt for UAC
+}
+
+// Is the Kraken present in the list AND ticked? If so we drive its ring over HID; if not
+// (unticked, or hidden/absent), we leave the ring to NZXT CAM.
+bool MainWindow::krakenSelected() const {
+    for (int i = 0; i < tree_->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* it = tree_->topLevelItem(i);
+        if (!it->data(0, kDeviceIndexRole).isValid()) continue;
+        if (!it->text(0).contains("kraken", Qt::CaseInsensitive)) continue;
+        return (it->flags() & Qt::ItemIsUserCheckable) && it->checkState(0) == Qt::Checked;
+    }
+    return false;
+}
+
+// Open/close the Kraken HID pipeline to match krakenSelected() while mirroring. Idempotent —
+// safe to call on any checkbox change or mirror start/stop.
+void MainWindow::syncKrakenDriving() {
+    const bool want = mirroring_ && krakenSelected();
+    if (want && !krakenDriving_) {
+        krakenDriving_ = kraken_.open();          // false if the Kraken isn't present / can't open
+    } else if (!want && krakenDriving_) {
+        kraken_.setRingColor(QColor(0, 0, 0));    // ring off, then release the handle for CAM
+        kraken_.close();
+        krakenDriving_ = false;
+    }
 }
 
 QList<int> MainWindow::gatherChecked() {
@@ -537,10 +688,12 @@ void MainWindow::refresh() {
 
         const bool isDram    = (d.type == 1);
         const bool isGpu     = (d.type == 2);
+        const bool isKraken  = d.name.contains("kraken", Qt::CaseInsensitive);
         const bool canMirror = (!isDram && !d.leds.empty());
 
         QString suffix;
         if (isDram) suffix = "   (RAM — excluded for safety)";
+        else if (isKraken) suffix = "   (ring — driven directly over USB; untick to leave it to CAM)";
         else if (isGpu) suffix = "   (needs OpenRGB as admin to light)";
         auto* dItem = new QTreeWidgetItem(tree_, {d.name + suffix, "device"});
         dItem->setData(0, kDeviceIndexRole, di);
@@ -575,7 +728,10 @@ void MainWindow::refresh() {
     baseTitle_ = QString("wled-pc-rgb — %1 devices").arg(devices.size());
     setWindowTitle(baseTitle_);
     building_ = false;
-    if (mirroring_) pushIncluded();
+    if (mirroring_) { pushIncluded(); syncKrakenDriving(); }   // a rescan re-ticks rows while building_
+                                                               // suppresses itemChanged, so reconcile the
+                                                               // Kraken pipeline here (e.g. a late-enumerated
+                                                               // Kraken, or one that failed to open earlier)
     refreshMirrorGate();
     maybeAutoMirror();
 

@@ -13,11 +13,14 @@ qt_add_executable(wled_pc_rgb
     src/sysinfo.cpp
     src/ipc_client.h
     src/ipc_client.cpp
+    src/kraken_driver.h
+    src/kraken_driver.cpp
 )
 
 target_link_libraries(wled_pc_rgb PRIVATE
     Qt6::Widgets
     Qt6::Network      # QLocalServer/QLocalSocket (single-instance) + OpenRGB SDK client
+    hidapi            # direct HID for the NZXT Kraken Elite ring (SignalRGB's 0x26 protocol)
 )
 
 # GUI subsystem on Windows (no console window when launched).

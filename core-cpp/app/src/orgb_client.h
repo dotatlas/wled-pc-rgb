@@ -65,17 +65,20 @@ public:
     bool alive() const;                              // socket connected?
     int  deviceCount() const;                        // number currently included
 private:
-    // Coolers (Kraken) light via a whole mode-update packet, which OpenRGB/the device
-    // applies far slower than per-LED writes — so pushing one every frame at 60 FPS backs
-    // up and the ring lags by minutes. Gate them: skip when the colour is unchanged, cap
-    // the rate, and back off when the OpenRGB socket is congested.
-    bool coolerDue(int idx, quint32 rgb);
+    // Per-device write gate. Two OpenRGB device classes are SLOW: coolers (a whole
+    // mode-update packet per frame) and GPUs (I2C/SMBus register writes). Pushing one every
+    // frame at 60 FPS backs the socket up and the device lags by seconds/minutes (the GPU
+    // was choppy for exactly this reason). The gate: (a) skip when the payload is unchanged —
+    // for EVERY device, so a steady colour never re-sends; (b) rate-cap the slow devices
+    // (GPU/cooler) to ~30/15 FPS; (c) back off when the OpenRGB socket is congested. Fast
+    // devices (mouse, motherboard) still send every changed frame.
+    bool deviceDue(int idx, int type, quint32 payloadHash);
 
     QTcpSocket* sock_ = nullptr;
     quint32 ver_ = 0;
     std::vector<Dev> devs_;                  // eligible devices (leds>0, not DRAM)
     std::set<int> included_;                 // device indices actually driven
-    std::map<int, quint32> coolerLast_;      // cooler idx -> last colour sent
-    std::map<int, qint64>  coolerAt_;        // cooler idx -> last send time (ms since epoch)
+    std::map<int, quint32> lastHash_;        // device idx -> last payload hash sent (skip-unchanged)
+    std::map<int, qint64>  lastAt_;          // slow device idx -> last send time (ms since epoch)
     QList<QString> skip_;                    // device-name substrings a bespoke pipeline owns
 };

@@ -1,7 +1,7 @@
-// wled-pc-rgb — v1.5: the WLED mirror.
+// wled-pc-rgb — v1.6: the WLED mirror.
 // The window (MainWindow) owns the tray, the setup strip, the device list and all
-// persisted settings. main() keeps the headless CLI helpers, the single-instance
-// guard, and the start-minimised behaviour.
+// persisted settings. main() keeps the headless CLI helpers (including the Kraken
+// ring pipeline verifiers), the single-instance guard, and start-minimised behaviour.
 
 #include <QApplication>
 #include <QLocalServer>
@@ -13,6 +13,7 @@
 #include "main_window.h"
 #include "orgb_client.h"
 #include "ipc_client.h"
+#include "kraken_driver.h"
 
 namespace {
 constexpr auto kInstanceKey = "wled-pc-rgb.singleton";
@@ -22,7 +23,7 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     app.setApplicationName("wled-pc-rgb");
-    app.setApplicationVersion("1.5");
+    app.setApplicationVersion("1.6");
     app.setOrganizationName("wled-pc-rgb");
     app.setQuitOnLastWindowClosed(false);   // closing the window hides to tray
 
@@ -45,6 +46,41 @@ int main(int argc, char** argv)
     }
     if (args.indexOf("--maxzones") > 0) {                                      // resize all resizable zones to the default
         QString e; return OrgbClient::resizeZones("127.0.0.1", 6742, 24, false, &e) >= 0 ? 0 : 2;
+    }
+    // --- Kraken ring HID pipeline (SignalRGB 0x26 protocol) verification ------
+    if (int i = args.indexOf("--kraken"); i > 0 && i + 1 < args.size()) {       // --kraken <#rrggbb>  (solid ring)
+        KrakenDriver k;
+        if (!k.open()) { return 3; }
+        k.setRingColor(QColor(args[i+1]));
+        return 0;
+    }
+    if (int i = args.indexOf("--krakencycle"); i > 0) {                        // --krakencycle [secs]  (live hue sweep)
+        const int secs = (i + 1 < args.size()) ? args[i+1].toInt() : 8;
+        KrakenDriver k;
+        if (!k.open()) { return 3; }
+        auto* t = new QTimer(&app);
+        int hue = 0;
+        QObject::connect(t, &QTimer::timeout, &app, [&k, &hue]{
+            k.setRingColor(QColor::fromHsv(hue % 360, 255, 255)); hue = (hue + 3) % 360;
+        });
+        t->start(33);   // ~30 FPS — the rate SignalRGB targets
+        QTimer::singleShot(secs * 1000, &app, &QCoreApplication::quit);
+        return app.exec();
+    }
+    if (int i = args.indexOf("--krakenspin"); i > 0) {                         // --krakenspin [secs] (rotating rainbow — per-LED test)
+        const int secs = (i + 1 < args.size()) ? args[i+1].toInt() : 8;
+        KrakenDriver k;
+        if (!k.open()) { return 3; }
+        auto* t = new QTimer(&app);
+        int phase = 0;
+        QObject::connect(t, &QTimer::timeout, &app, [&k, &phase]{
+            QList<QColor> ring; ring.reserve(24);
+            for (int j = 0; j < 24; ++j) ring.push_back(QColor::fromHsv((j * 15 + phase) % 360, 255, 255));
+            k.setRing(ring); phase = (phase + 6) % 360;
+        });
+        t->start(33);
+        QTimer::singleShot(secs * 1000, &app, &QCoreApplication::quit);
+        return app.exec();
     }
     if (int i = args.indexOf("--mirror"); i > 0) {                             // --mirror [seconds] [spread|wrap]
         const int secs = (i + 1 < args.size()) ? args[i+1].toInt() : 5;

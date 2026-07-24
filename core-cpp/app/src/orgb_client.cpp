@@ -263,27 +263,40 @@ OrgbMirror::~OrgbMirror() { close(); }
 void OrgbMirror::close() {
     if (sock_) { delete sock_; sock_ = nullptr; }
     devs_.clear();
-    coolerLast_.clear(); coolerAt_.clear();
+    lastHash_.clear(); lastAt_.clear();
 }
 
 static inline quint32 packRGB(const QColor& c) {
     return quint32(c.red()) | (quint32(c.green()) << 8) | (quint32(c.blue()) << 16);
 }
 
-// Should we send a mode-update to cooler `idx` for colour `rgb` this frame?
-// No if the colour is unchanged, if the socket is congested, or if it is too soon since
-// the last update (a ~15 Hz cap — plenty for a single-colour ring, and it stops the
-// mode-update backlog that made the Kraken ring lag by minutes at 60 FPS).
-bool OrgbMirror::coolerDue(int idx, quint32 rgb) {
-    constexpr qint64 kMinIntervalMs = 66;      // ~15 updates/second, max
-    constexpr qint64 kMaxPending    = 8192;    // bytes queued to OpenRGB before we back off
+// Cheap FNV-1a hash of a per-LED colour list, so we can skip re-sending an identical frame
+// (a moving gradient hashes differently each frame; a steady colour hashes the same).
+static quint32 hashCols(const QColor* cols, int n) {
+    quint32 h = 2166136261u;
+    for (int i = 0; i < n; ++i) { h = (h ^ packRGB(cols[i])) * 16777619u; }
+    return h ? h : 1;   // reserve 0 as "never sent"
+}
+
+// Should we send to device `idx` (class `type`) with this payload hash, this frame?
+//  - congested socket        -> no  (all devices; retry next frame)
+//  - payload unchanged        -> no  (all devices; never re-send a steady colour)
+//  - slow device, too soon    -> no  (GPU ~30 FPS, cooler ~15 FPS; retry when due)
+// Otherwise yes, and we record the hash (+ time for slow devices).
+bool OrgbMirror::deviceDue(int idx, int type, quint32 payloadHash) {
+    constexpr qint64 kMaxPending = 8192;       // bytes queued to OpenRGB before we back off
     if (sock_ && sock_->bytesToWrite() > kMaxPending) return false;
-    auto it = coolerLast_.find(idx);
-    if (it != coolerLast_.end() && it->second == rgb) return false;   // unchanged
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    const qint64 last = coolerAt_.count(idx) ? coolerAt_[idx] : 0;
-    if (now - last < kMinIntervalMs) return false;                    // too soon
-    coolerLast_[idx] = rgb; coolerAt_[idx] = now;
+    auto it = lastHash_.find(idx);
+    if (it != lastHash_.end() && it->second == payloadHash) return false;   // unchanged
+    const bool slow = (type == 2 || type == 4);                             // GPU / cooler
+    if (slow) {
+        const qint64 iv   = (type == 4) ? 66 : 33;   // cooler heavier (mode-update) than GPU
+        const qint64 now  = QDateTime::currentMSecsSinceEpoch();
+        const qint64 last = lastAt_.count(idx) ? lastAt_[idx] : 0;
+        if (now - last < iv) return false;            // too soon
+        lastAt_[idx] = now;
+    }
+    lastHash_[idx] = payloadHash;
     return true;
 }
 
@@ -361,9 +374,10 @@ static void driveDevice(QTcpSocket& s, const OrgbMirror::Dev& d, quint32 ver, co
 
 void OrgbMirror::apply(const QColor& color) {
     if (!sock_ || sock_->state() != QAbstractSocket::ConnectedState) return;
+    const quint32 h = packRGB(color);
     for (const Dev& d : devs_) {
         if (!included_.count(d.idx)) continue;
-        if (d.type == 4 && !coolerDue(d.idx, packRGB(color))) continue;   // throttle the cooler
+        if (!deviceDue(d.idx, d.type, h)) continue;   // skip-unchanged (all) + slow rate-cap (GPU/cooler)
         driveDevice(*sock_, d, ver_, color);
     }
 }
@@ -376,14 +390,15 @@ void OrgbMirror::applyBuckets(const QList<QColor>& cols) {
     for (const Dev& d : devs_) {
         if (!included_.count(d.idx)) continue;
         if (d.type == 4 && !d.modeRaw.isEmpty()) {
-            if (coolerDue(d.idx, packRGB(avg))) driveDevice(*sock_, d, ver_, avg);
+            if (deviceDue(d.idx, d.type, packRGB(avg))) driveDevice(*sock_, d, ver_, avg);
             continue;
         }
+        std::vector<QColor> perLed; perLed.reserve(size_t(d.ledN));   // sample the strip across this device's LEDs
+        for (int j = 0; j < d.ledN; ++j)
+            perLed.push_back(cols[qBound(0, j * cols.size() / qMax(1, d.ledN), cols.size() - 1)]);
+        if (!deviceDue(d.idx, d.type, hashCols(perLed.data(), int(perLed.size())))) continue;
         QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
-        for (int j = 0; j < d.ledN; ++j) {
-            const QColor& c = cols[qBound(0, j * cols.size() / qMax(1, d.ledN), cols.size() - 1)];
-            put32(up, quint32(c.red()) | (quint32(c.green()) << 8) | (quint32(c.blue()) << 16));
-        }
+        for (const QColor& c : perLed) put32(up, packRGB(c));
         sendPacket(*sock_, quint32(d.idx), CMD_UPDATE_LEDS, up);
     }
 }
@@ -410,14 +425,15 @@ void OrgbMirror::applyWrapped(const QList<QColor>& cols) {
             long r = 0, g = 0, b = 0;
             for (int j = 0; j < ledN; ++j) { const QColor& c = cols[wrapBucket(offset + j, total, nB)]; r += c.red(); g += c.green(); b += c.blue(); }
             const QColor cc(int(r / ledN), int(g / ledN), int(b / ledN));
-            if (coolerDue(d.idx, packRGB(cc))) driveDevice(*sock_, d, ver_, cc);
+            if (deviceDue(d.idx, d.type, packRGB(cc))) driveDevice(*sock_, d, ver_, cc);
         } else {
-            QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
-            for (int j = 0; j < d.ledN; ++j) {
-                const QColor& c = cols[wrapBucket(offset + j, total, nB)];
-                put32(up, quint32(c.red()) | (quint32(c.green()) << 8) | (quint32(c.blue()) << 16));
+            std::vector<QColor> perLed; perLed.reserve(size_t(d.ledN));
+            for (int j = 0; j < d.ledN; ++j) perLed.push_back(cols[wrapBucket(offset + j, total, nB)]);
+            if (deviceDue(d.idx, d.type, hashCols(perLed.data(), int(perLed.size())))) {
+                QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
+                for (const QColor& c : perLed) put32(up, packRGB(c));
+                sendPacket(*sock_, quint32(d.idx), CMD_UPDATE_LEDS, up);
             }
-            sendPacket(*sock_, quint32(d.idx), CMD_UPDATE_LEDS, up);
         }
         offset += ledN;
     }

@@ -3,6 +3,25 @@
 This is a list of the important changes to **wled-pc-rgb**. The newest is first. Each
 version is a git tag (`vX.Y`).
 
+## v1.6
+
+- **The Kraken Elite ring updates live again — with the correct protocol.** Version 1.5 was
+  wrong: the ring *can* update live and per-LED. The earlier versions used the wrong USB
+  commands (the HUE2 protocol — opcode `0x22`, 64-byte reports, with an "apply" each frame),
+  which this model does not stream well, so the ring lagged and the per-LED pattern collapsed.
+  The app now uses the exact commands that SignalRGB uses for this model (opcode `0x26`,
+  512-byte reports, one write for each frame, no "apply"), at about 30 frames each second.
+  The ring now shows a smooth, per-LED gradient that moves and flashes with WLED. The Kraken
+  is its own USB pipeline, separate from OpenRGB. Test it with `--kraken #rrggbb` (solid),
+  `--krakencycle` (a color sweep), or `--krakenspin` (a moving rainbow — the per-LED test).
+  You must close other Kraken software (NZXT CAM, SignalRGB) first, or they fight the ring.
+- **The GPU RGB is smooth now.** Before, the GPU updated on every frame (up to 60 each
+  second). GPU RGB goes through OpenRGB over the slow SMBus, so the writes made a queue and
+  the GPU lagged and was choppy. The app now updates the slow devices (the GPU and coolers)
+  at a set rate (the GPU about 30 times each second), and it does not send the same colors
+  again. This makes the GPU smooth, for every GPU that OpenRGB supports. (GPU RGB still shows
+  light only when you run OpenRGB as administrator — the SMBus needs it. This does not change.)
+
 ## v1.5
 
 - **The Kraken ring is left to NZXT CAM.** Testing showed the ring cannot update live over
