@@ -8,6 +8,7 @@
 #include <vector>
 #include <utility>
 #include <set>
+#include <map>
 #include <cstdint>
 #include <QList>
 
@@ -63,8 +64,16 @@ public:
     bool alive() const;                              // socket connected?
     int  deviceCount() const;                        // number currently included
 private:
+    // Coolers (Kraken) light via a whole mode-update packet, which OpenRGB/the device
+    // applies far slower than per-LED writes — so pushing one every frame at 60 FPS backs
+    // up and the ring lags by minutes. Gate them: skip when the colour is unchanged, cap
+    // the rate, and back off when the OpenRGB socket is congested.
+    bool coolerDue(int idx, quint32 rgb);
+
     QTcpSocket* sock_ = nullptr;
     quint32 ver_ = 0;
     std::vector<Dev> devs_;                  // eligible devices (leds>0, not DRAM)
     std::set<int> included_;                 // device indices actually driven
+    std::map<int, quint32> coolerLast_;      // cooler idx -> last colour sent
+    std::map<int, qint64>  coolerAt_;        // cooler idx -> last send time (ms since epoch)
 };

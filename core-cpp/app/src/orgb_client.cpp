@@ -1,5 +1,6 @@
 #include "orgb_client.h"
 #include <QTcpSocket>
+#include <QDateTime>
 #include <cstring>
 
 // --- OpenRGB SDK protocol -----------------------------------------------------
@@ -262,6 +263,28 @@ OrgbMirror::~OrgbMirror() { close(); }
 void OrgbMirror::close() {
     if (sock_) { delete sock_; sock_ = nullptr; }
     devs_.clear();
+    coolerLast_.clear(); coolerAt_.clear();
+}
+
+static inline quint32 packRGB(const QColor& c) {
+    return quint32(c.red()) | (quint32(c.green()) << 8) | (quint32(c.blue()) << 16);
+}
+
+// Should we send a mode-update to cooler `idx` for colour `rgb` this frame?
+// No if the colour is unchanged, if the socket is congested, or if it is too soon since
+// the last update (a ~15 Hz cap — plenty for a single-colour ring, and it stops the
+// mode-update backlog that made the Kraken ring lag by minutes at 60 FPS).
+bool OrgbMirror::coolerDue(int idx, quint32 rgb) {
+    constexpr qint64 kMinIntervalMs = 66;      // ~15 updates/second, max
+    constexpr qint64 kMaxPending    = 8192;    // bytes queued to OpenRGB before we back off
+    if (sock_ && sock_->bytesToWrite() > kMaxPending) return false;
+    auto it = coolerLast_.find(idx);
+    if (it != coolerLast_.end() && it->second == rgb) return false;   // unchanged
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 last = coolerAt_.count(idx) ? coolerAt_[idx] : 0;
+    if (now - last < kMinIntervalMs) return false;                    // too soon
+    coolerLast_[idx] = rgb; coolerAt_[idx] = now;
+    return true;
 }
 
 bool OrgbMirror::alive() const {
@@ -332,8 +355,11 @@ static void driveDevice(QTcpSocket& s, const OrgbMirror::Dev& d, quint32 ver, co
 
 void OrgbMirror::apply(const QColor& color) {
     if (!sock_ || sock_->state() != QAbstractSocket::ConnectedState) return;
-    for (const Dev& d : devs_)
-        if (included_.count(d.idx)) driveDevice(*sock_, d, ver_, color);
+    for (const Dev& d : devs_) {
+        if (!included_.count(d.idx)) continue;
+        if (d.type == 4 && !coolerDue(d.idx, packRGB(color))) continue;   // throttle the cooler
+        driveDevice(*sock_, d, ver_, color);
+    }
 }
 
 void OrgbMirror::applyBuckets(const QList<QColor>& cols) {
@@ -343,7 +369,10 @@ void OrgbMirror::applyBuckets(const QList<QColor>& cols) {
     const QColor avg(int(r / cols.size()), int(g / cols.size()), int(b / cols.size()));   // coolers get the average
     for (const Dev& d : devs_) {
         if (!included_.count(d.idx)) continue;
-        if (d.type == 4 && !d.modeRaw.isEmpty()) { driveDevice(*sock_, d, ver_, avg); continue; }
+        if (d.type == 4 && !d.modeRaw.isEmpty()) {
+            if (coolerDue(d.idx, packRGB(avg))) driveDevice(*sock_, d, ver_, avg);   // throttle the cooler
+            continue;
+        }
         QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
         for (int j = 0; j < d.ledN; ++j) {
             const QColor& c = cols[qBound(0, j * cols.size() / qMax(1, d.ledN), cols.size() - 1)];
@@ -374,7 +403,8 @@ void OrgbMirror::applyWrapped(const QList<QColor>& cols) {
         if (d.type == 4 && !d.modeRaw.isEmpty()) {  // cooler: single colour = average of its slice
             long r = 0, g = 0, b = 0;
             for (int j = 0; j < ledN; ++j) { const QColor& c = cols[wrapBucket(offset + j, total, nB)]; r += c.red(); g += c.green(); b += c.blue(); }
-            driveDevice(*sock_, d, ver_, QColor(int(r / ledN), int(g / ledN), int(b / ledN)));
+            const QColor cc(int(r / ledN), int(g / ledN), int(b / ledN));
+            if (coolerDue(d.idx, packRGB(cc))) driveDevice(*sock_, d, ver_, cc);   // throttle the cooler
         } else {
             QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
             for (int j = 0; j < d.ledN; ++j) {

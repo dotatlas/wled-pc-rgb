@@ -3,6 +3,13 @@
 This is a list of the important changes to **wled-pc-rgb**. The newest is first. Each
 version is a git tag (`vX.Y`).
 
+## v1.1.1
+
+- **Fix the Kraken ring lag.** The NZXT Kraken ring shows a color with a full mode-update.
+  At the new high frame rate, too many mode-updates made a queue in OpenRGB, so the ring
+  changed only after some minutes. The app now sends a cooler update at most about 15 times
+  each second, and it does not send the same color again. The ring now follows in real time.
+
 ## v1.1
 
 - **Real-time mirror.** The PC now follows WLED at its true frame rate. Before, a fixed
