@@ -67,13 +67,16 @@ Close the window and the app keeps running in the **tray** (right-click → Show
 - **Flash gain** (1.0×–5.0×) — a multiplier for when WLED's flashes are too dim on the PC.
   It amplifies the mirrored colour (clamped at full brightness), so a faint spike on the
   strip reads as a punchy flash on your fans/ring. 1.0× = no change.
-- **Min brightness** (0–100%) — a floor the PC light never drops below. WLED spikes still
-  flash *above* it, but between flashes the PC keeps a baseline glow instead of going all
-  the way off. Colours keep their hue (a dim red is lifted to a brighter red); a fully
-  black frame lifts to a dim neutral glow. 0% = follow WLED exactly (can go dark).
+- **Min brightness** (0–100%) — a floor for *dim* content so the PC doesn't drop to near-off
+  between flashes. WLED spikes still flash *above* it, and a dim colour keeps its hue (a dim
+  red is lifted to a brighter red). A **fully black frame stays off** — the floor is for dim
+  content, not for making light out of nothing. 0% = follow WLED exactly.
 
   The three sliders compose: **brightness** sets the overall level, **gain** amplifies the
-  flashes, **min brightness** guarantees a floor. All three are remembered between runs.
+  flashes, **min brightness** lifts dim content. All three are remembered between runs.
+- **When off, show colour** — by default an off/black LED (a dark part of the strip, or WLED
+  turned off) is simply **off**. Tick this and pick a colour to show a static idle glow there
+  instead. The colour to the right of the checkbox is the picker.
 - **Start with Windows** — Options → *Launch at login* and *Start minimised to tray* for
   a set-and-forget background mirror. *Auto-mirror on launch* starts mirroring
   automatically once everything is ready.
@@ -91,8 +94,17 @@ Close the window and the app keeps running in the **tray** (right-click → Show
   If you want GPU lighting, start OpenRGB as admin yourself before launching the app —
   accepting that trade-off.
 - **MSI Mystic Light / ARGB fans** — motherboard ARGB zones can read as 0 LEDs after an
-  OpenRGB restart. Advanced → **Size zones (24)** resizes them so the fans light.
+  OpenRGB restart, and each JARGB header is its own zone. Advanced → set the **zone size**
+  (LEDs per header — default **8**, e.g. an 8-LED JARGB fan) and click **Size zones**.
 - **Mouse** and other USB-HID devices — driven directly, no elevation needed.
+
+### Smoothness & latency
+
+The PC follows WLED's live output at its **real frame rate** (event-driven — no fixed cap),
+with Nagle disabled on the internal links for low latency. If it still looks choppy, the
+limit is upstream: the WLED live-view WebSocket updates slower than a direct feed. For the
+smoothest, lowest-latency result, stream from LedFx straight to this PC via **DDP (4048)**
+or **E1.31/sACN (5568)** — those carry the full frame rate.
 
 ## 6. Troubleshooting
 
@@ -102,7 +114,8 @@ Close the window and the app keeps running in the **tray** (right-click → Show
 | **Only some devices listed** (e.g. Kraken/mouse missing) | USB-HID devices enumerate a few seconds after OpenRGB starts. The app re-scans automatically at ~6s and ~13s; you can also hit Advanced → **Rescan**. |
 | **Backend dot red** | Java isn't found. Install a JDK (21+) or set `JAVA_HOME`. The app backs off and retries. |
 | **WLED dot red / “unreachable”** | Wrong host. Enter the IP directly (`192.168.x.x`) in the WLED host field and Apply. |
-| **WLED dot amber, mirror paused** | WLED is **off** — the app holds the PC RGB rather than blacking it out. Turn WLED on. |
+| **WLED dot amber** | WLED is **off** — the PC goes off too (or shows your idle colour if *When off, show colour* is ticked). Turn WLED on. |
+| **PC RGB stays white/lit when WLED is black** | Fixed in v1.1 (black → off). If you *want* a colour when off, tick *When off, show colour*. |
 | **Fans/GPU/Kraken flicker or fight** | Close other RGB software (NZXT CAM, SignalRGB, iCUE, Synapse) — they grab the same devices. |
 | **Kraken ring stays dark** | Make sure it's in **Static** (the app sets this automatically while mirroring; or double-click its Static mode row). |
 

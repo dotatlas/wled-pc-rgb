@@ -44,9 +44,10 @@ import java.util.regex.Pattern;
 
 public class WledBackend {
 
-    static volatile String    avgColor      = "#000000";
-    static volatile String    bucketsJson   = "[]";
-    static volatile String    source        = "live";
+    // The colour payload (avg + buckets + src) is published as ONE atomic string so a
+    // client never stitches together fields from two different frames. reachable/on/bri
+    // stay separate (they're updated by the state poller and must refresh via keepalive).
+    static volatile String    framePayload  = "\"avg\":\"#000000\",\"cols\":[],\"src\":\"live\"";
     static volatile int       ledCount      = 0;
     static volatile String    wledName      = "WLED";
     static volatile boolean   wledReachable = false;
@@ -58,6 +59,8 @@ public class WledBackend {
     static volatile long      lastSacnMs    = 0;
     // ACN packet identifier "ASC-E1.17\0\0\0" — bytes 4..15 of every E1.31 packet.
     static final byte[] ACN_ID = {0x41,0x53,0x43,0x2d,0x45,0x31,0x2e,0x31,0x37,0x00,0x00,0x00};
+    static final Object frameLock = new Object();   // event-driven push: wake clients on each decoded frame
+    static volatile long frameSeq = 0;
     static final int NB = 64;   // strip buckets sent per frame (finer = smoother spread/wrap)
     static volatile String wledHost = "wled.local";
     static HttpClient http;
@@ -208,35 +211,53 @@ public class WledBackend {
 
     static void computeFrom(byte[] f, int off, String src) {
         int n = Math.max(0, (f.length - off) / 3);
-        if (n == 0) { avgColor = "#000000"; bucketsJson = "[]"; source = src; return; }
-        long r = 0, g = 0, b = 0;
-        for (int i = 0; i < n; i++) { r += f[off+i*3]&0xff; g += f[off+i*3+1]&0xff; b += f[off+i*3+2]&0xff; }
-        avgColor = String.format("#%02x%02x%02x", (int)(r/n), (int)(g/n), (int)(b/n));
-        StringBuilder sb = new StringBuilder("[");
-        for (int bkt = 0; bkt < NB; bkt++) {
-            int lo = bkt*n/NB, hi = (bkt+1)*n/NB; if (hi <= lo) hi = Math.min(lo+1, n);
-            long rr=0,gg=0,bb=0; int cnt=0;
-            for (int i = lo; i < hi; i++) { rr += f[off+i*3]&0xff; gg += f[off+i*3+1]&0xff; bb += f[off+i*3+2]&0xff; cnt++; }
-            if (cnt == 0) cnt = 1;
-            if (bkt > 0) sb.append(",");
-            sb.append(String.format("\"#%02x%02x%02x\"", (int)(rr/cnt), (int)(gg/cnt), (int)(bb/cnt)));
+        String avg, cols;
+        if (n == 0) {
+            avg = "#000000"; cols = "[]";
+        } else {
+            long r = 0, g = 0, b = 0;
+            for (int i = 0; i < n; i++) { r += f[off+i*3]&0xff; g += f[off+i*3+1]&0xff; b += f[off+i*3+2]&0xff; }
+            avg = String.format("#%02x%02x%02x", (int)(r/n), (int)(g/n), (int)(b/n));
+            StringBuilder sb = new StringBuilder("[");
+            for (int bkt = 0; bkt < NB; bkt++) {
+                int lo = bkt*n/NB, hi = (bkt+1)*n/NB; if (hi <= lo) hi = Math.min(lo+1, n);
+                long rr=0,gg=0,bb=0; int cnt=0;
+                for (int i = lo; i < hi; i++) { rr += f[off+i*3]&0xff; gg += f[off+i*3+1]&0xff; bb += f[off+i*3+2]&0xff; cnt++; }
+                if (cnt == 0) cnt = 1;
+                if (bkt > 0) sb.append(",");
+                sb.append(String.format("\"#%02x%02x%02x\"", (int)(rr/cnt), (int)(gg/cnt), (int)(bb/cnt)));
+            }
+            cols = sb.append("]").toString();
         }
-        bucketsJson = sb.append("]").toString();
-        source = src;
+        // Build the whole colour payload locally, then publish it as one reference.
+        final String payload = "\"avg\":\"" + avg + "\",\"cols\":" + cols + ",\"src\":\"" + src + "\"";
+        synchronized (frameLock) { framePayload = payload; frameSeq++; frameLock.notifyAll(); }
+    }
+
+    static String frameJson() {
+        return "{\"type\":\"frame\"," + framePayload
+             + ",\"reachable\":" + wledReachable + ",\"on\":" + wledOn + ",\"bri\":" + wledBri + "}";
     }
 
     static void handleClient(Socket c) {
         try (Socket s = c;
              PrintWriter out = new PrintWriter(new OutputStreamWriter(s.getOutputStream(), StandardCharsets.UTF_8), true);
              BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8))) {
+            try { s.setTcpNoDelay(true); } catch (Exception ignore) {}   // low latency: no Nagle batching
             out.println("{\"type\":\"hello\",\"wled\":\"" + esc(wledName) + "\",\"leds\":" + ledCount + ",\"reachable\":" + wledReachable + "}");
             Thread reader = new Thread(() -> { try { String line; while ((line = in.readLine()) != null) handleCommand(line); } catch (Exception ignore) {} });
             reader.setDaemon(true); reader.start();
+            // Event-driven: push a frame the instant a new WLED frame is decoded, so the PC
+            // tracks the source's real frame rate (not a fixed cap). The 500ms wait timeout is
+            // a keepalive so on/off/brightness still refresh when the colour is static.
+            long seen = -1;
             while (!s.isClosed()) {
-                out.println("{\"type\":\"frame\",\"avg\":\"" + avgColor + "\",\"cols\":" + bucketsJson
-                        + ",\"src\":\"" + source + "\",\"reachable\":" + wledReachable + ",\"on\":" + wledOn + ",\"bri\":" + wledBri + "}");
+                synchronized (frameLock) {
+                    if (frameSeq == seen) { try { frameLock.wait(500); } catch (InterruptedException e) { return; } }
+                    seen = frameSeq;
+                }
+                out.println(frameJson());
                 if (out.checkError()) break;
-                Thread.sleep(100);
             }
         } catch (Exception ignore) {}
     }

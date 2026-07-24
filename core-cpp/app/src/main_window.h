@@ -13,6 +13,7 @@ class QTreeWidget;
 class QTreeWidgetItem;
 class QLabel;
 class QSlider;
+class QSpinBox;
 class QLineEdit;
 class QPushButton;
 class QCheckBox;
@@ -63,6 +64,9 @@ private:
     QPushButton* mirBtn_ = nullptr;
     QCheckBox*   spreadChk_ = nullptr;
     QCheckBox*   wrapChk_   = nullptr;
+    QSpinBox*    zoneSpin_  = nullptr;
+    QCheckBox*   idleChk_   = nullptr;
+    QPushButton* idleBtn_   = nullptr;
     QCheckBox*   autoMirrorChk_ = nullptr;
     QCheckBox*   autostartChk_  = nullptr;
     QCheckBox*   startMinChk_   = nullptr;
@@ -73,6 +77,8 @@ private:
     QProcess*   backend_ = nullptr;
     OrgbMirror  mirror_;
     bool  mirroring_ = false, spread_ = false, wrap_ = false, building_ = false, stopping_ = false;
+    bool  idleOn_ = false;
+    QColor idleColor_ = QColor(20, 20, 40);
     bool  openrgbReady_ = false, backendUp_ = false, wledReachable_ = false, wledOn_ = true;
     int   zeroRetries_ = 0, backendFails_ = 0, backendDelayMs_ = 1500;
     QColor wledColour_;

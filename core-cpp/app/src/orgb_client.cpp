@@ -300,6 +300,7 @@ bool OrgbMirror::open(const QString& host, quint16 port, QString* error) {
         included_.insert(int(i));                  // include every eligible device by default
     }
     ver_ = ver; sock_ = s;
+    sock_->setSocketOption(QAbstractSocket::LowDelayOption, 1);   // no Nagle: push each frame's writes out immediately
     return true;
 }
 

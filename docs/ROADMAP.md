@@ -38,6 +38,8 @@ increment is a tagged version (`vX.Y`). No half-finished features on `main`.
 | v0.23 | 5 | Bespoke NZXT Kraken ring driver (hidapi, HUE2 Direct) — deferred (ring already mirrors via OpenRGB Static) | |
 | v0.24 | 5 | Kraken Elite LCD — static sensor screen → looping GIF — deferred (needs manual Zadig/WinUSB driver swap) | |
 | **v1.0** | — | Release: portable self-contained zip, MIT-licensed, open source on GitHub (no installer/signing — by design for a tiny tool) | ✅ done |
+| v1.0.1 | — | Packaging fix: bundle Qt plugin folders (platforms\) so the zip actually runs | ✅ done |
+| v1.1 | — | Responsiveness + mirror-quality: event-driven backend (real frame rate, was 10 FPS cap) + TCP_NODELAY (low latency); black→off (no more white when WLED is off); configurable zone size (default 8); idle-colour picker for off LEDs | ✅ done |
 
 ---
 

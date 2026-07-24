@@ -19,7 +19,10 @@ IpcClient::IpcClient(QObject* parent)
             onLine(line);
         }
     });
-    connect(sock_, &QTcpSocket::connected,    this, [this] { emit connectionChanged(true); });
+    connect(sock_, &QTcpSocket::connected,    this, [this] {
+        sock_->setSocketOption(QAbstractSocket::LowDelayOption, 1);   // no Nagle: minimal frame latency
+        emit connectionChanged(true);
+    });
     connect(sock_, &QTcpSocket::disconnected, this, [this] { emit connectionChanged(false); retry_->start(1000); });
     connect(sock_, &QAbstractSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) { retry_->start(1000); });
     connect(retry_, &QTimer::timeout, this, [this] { tryConnect(); });

@@ -13,6 +13,8 @@
 #include <QPushButton>
 #include <QCheckBox>
 #include <QSlider>
+#include <QSpinBox>
+#include <QColorDialog>
 #include <QLineEdit>
 #include <QGroupBox>
 #include <QVBoxLayout>
@@ -47,7 +49,7 @@ constexpr int kModeIndexRole   = Qt::UserRole + 2;
 constexpr auto kHost = "127.0.0.1";
 constexpr quint16 kPort = 6742;
 constexpr quint16 kIpcPort = 47900;
-constexpr int kDefaultZoneLeds = 24;
+constexpr int kDefaultZoneLeds = 8;   // MSI JARGB headers are zones of 8 (user-adjustable)
 
 // Mirror colour transform: attenuate by PC brightness (0-100%), then amplify by gain
 // (>=100%) so dim WLED flashes read brighter on the PC. Each channel is clamped to
@@ -57,18 +59,25 @@ QColor boost(const QColor& c, int briPct, int gainPct) {
     return QColor(ch(c.red()), ch(c.green()), ch(c.blue()));
 }
 
-// Minimum-brightness floor: guarantees the PC light never drops below `floor255`.
-// If the colour's brightest channel is under the floor, the whole colour is scaled UP
-// so hue is preserved (a dim red stays red, just brighter); pure black lifts to a
-// neutral dim glow so the light never goes fully off. floor255<=0 → no floor.
+// Minimum-brightness floor: lifts a DIM (but non-black) colour so the PC light doesn't
+// drop below `floor255` between flashes. The whole colour is scaled UP so hue is
+// preserved (a dim red stays red, just brighter). Pure black is left OFF — when WLED
+// goes dark, the PC goes dark too (the floor is for dim content, not for making light
+// out of nothing). floor255<=0 → no floor.
 QColor withFloor(const QColor& c, int floor255) {
     if (floor255 <= 0) return c;
     if (floor255 > 255) floor255 = 255;
     int m = c.red(); if (c.green() > m) m = c.green(); if (c.blue() > m) m = c.blue();
-    if (m >= floor255) return c;
-    if (m == 0) return QColor(floor255, floor255, floor255);
+    if (m == 0 || m >= floor255) return c;   // black stays off; already-bright passes through
     auto up = [&](int v){ int x = v * floor255 / m; return x > 255 ? 255 : x; };
     return QColor(up(c.red()), up(c.green()), up(c.blue()));
+}
+
+// When an output LED would be off (pure black — the strip is dark there, or WLED is off),
+// either leave it off or substitute a chosen idle colour, per the user's toggle.
+QColor withIdle(const QColor& c, bool idleOn, const QColor& idle) {
+    if (idleOn && c.red() == 0 && c.green() == 0 && c.blue() == 0) return idle;
+    return c;
 }
 
 // Full WLED→PC colour map. Order matters: apply the floor to the raw WLED signal FIRST,
@@ -95,6 +104,8 @@ void paintSwatch(QLabel* l, const QColor& c) {
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     QSettings s;
     wledHost_ = s.value("wled/host", "wled.local").toString();
+    idleOn_ = s.value("mirror/idleOn", false).toBool();
+    idleColor_ = QColor(s.value("mirror/idleColor", idleColor_.name()).toString());
 
     setWindowTitle(baseTitle_);
     resize(660, 640);
@@ -170,7 +181,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(bright_, &QSlider::valueChanged, this, [this, bVal](int v){
         bVal->setText(QString::number(v) + "%");
         QSettings().setValue("mirror/brightness", v);
-        paintSwatch(swatchP_, mapColor(wledColour_, v, gain_->value(), floor_->value()));
+        paintSwatch(swatchP_, withIdle(mapColor(wledColour_, v, gain_->value(), floor_->value()), idleOn_, idleColor_));
     });
     bRow->addWidget(new QLabel("PC brightness:", central));
     bRow->addWidget(bright_, 1);
@@ -192,7 +203,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(gain_, &QSlider::valueChanged, this, [this, gVal, gText](int v){
         gVal->setText(gText(v));
         QSettings().setValue("mirror/gain", v);
-        paintSwatch(swatchP_, mapColor(wledColour_, bright_->value(), v, floor_->value()));
+        paintSwatch(swatchP_, withIdle(mapColor(wledColour_, bright_->value(), v, floor_->value()), idleOn_, idleColor_));
     });
     gRow->addWidget(gLabel);
     gRow->addWidget(gain_, 1);
@@ -204,21 +215,45 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     floor_->setRange(0, 100);                  // 0% = follow WLED exactly (can go fully off)
     floor_->setValue(s.value("mirror/floor", 0).toInt());
     auto* fLabel = new QLabel("Min brightness:", central);
-    const QString fTip = "The PC light never drops below this. WLED spikes still flash above "
-                         "it, but it never goes all the way off. 0% = follow WLED exactly.";
+    const QString fTip = "Lifts DIM (non-black) content so it doesn't fade to near-off between "
+                         "flashes; spikes still flash above it. Pure black and WLED-off stay OFF "
+                         "(tick \"When off, show colour\" for an idle glow). 0% = follow WLED exactly.";
     fLabel->setToolTip(fTip); floor_->setToolTip(fTip);
     auto* fVal = new QLabel(QString::number(floor_->value()) + "%", central);
     connect(floor_, &QSlider::valueChanged, this, [this, fVal](int v){
         fVal->setText(QString::number(v) + "%");
         QSettings().setValue("mirror/floor", v);
-        paintSwatch(swatchP_, mapColor(wledColour_, bright_->value(), gain_->value(), v));
+        paintSwatch(swatchP_, withIdle(mapColor(wledColour_, bright_->value(), gain_->value(), v), idleOn_, idleColor_));
     });
     fRow->addWidget(fLabel);
     fRow->addWidget(floor_, 1);
     fRow->addWidget(fVal);
+
+    // --- idle colour: what an OFF/black LED shows (stay off, or a chosen colour) ---
+    auto* iRow = new QHBoxLayout;
+    idleChk_ = new QCheckBox("When off, show colour:", central);
+    idleChk_->setChecked(idleOn_);
+    idleChk_->setToolTip("Unchecked: LEDs that are off/black stay off. Checked: they show the "
+                         "colour on the right instead (a static idle glow) — used for dark parts "
+                         "of the strip and when WLED is off.");
+    idleBtn_ = new QPushButton(central);
+    idleBtn_->setFixedWidth(52);
+    idleBtn_->setToolTip("Pick the idle colour (used only when the box is ticked).");
+    auto paintIdleBtn = [this]{ idleBtn_->setStyleSheet(
+        QString("background:%1; border:1px solid #555;").arg(idleColor_.name())); };
+    paintIdleBtn();
+    connect(idleChk_, &QCheckBox::toggled, this, [this](bool on){ idleOn_ = on; QSettings().setValue("mirror/idleOn", on); });
+    connect(idleBtn_, &QPushButton::clicked, this, [this, paintIdleBtn]{
+        const QColor c = QColorDialog::getColor(idleColor_, this, "Idle colour");
+        if (c.isValid()) { idleColor_ = c; paintIdleBtn(); QSettings().setValue("mirror/idleColor", c.name()); }
+    });
+    iRow->addWidget(idleChk_);
+    iRow->addWidget(idleBtn_);
+    iRow->addStretch(1);
+
     // Paint the PC preview once now (sliders built setValue-before-connect, so none of
-    // their lambdas fired): reflects a restored Min-brightness floor before the 1st frame.
-    paintSwatch(swatchP_, mapColor(wledColour_, bright_->value(), gain_->value(), floor_->value()));
+    // their lambdas fired): reflects a restored floor / idle colour before the 1st frame.
+    paintSwatch(swatchP_, withIdle(mapColor(wledColour_, bright_->value(), gain_->value(), floor_->value()), idleOn_, idleColor_));
 
     // --- primary mirror button ------------------------------------------------
     mirBtn_ = new QPushButton("▶  Mirror WLED", central);
@@ -234,7 +269,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     adv->setChecked(false);
     auto* ag = new QHBoxLayout(adv);
     auto* rescan = new QPushButton("Rescan", adv);
-    auto* maxZ   = new QPushButton(QString("Size zones (%1)").arg(kDefaultZoneLeds), adv);
+    auto* maxZ   = new QPushButton("Size zones", adv);
+    zoneSpin_ = new QSpinBox(adv);
+    zoneSpin_->setRange(1, 512);
+    zoneSpin_->setValue(s.value("mirror/zoneLeds", kDefaultZoneLeds).toInt());
+    zoneSpin_->setToolTip("LEDs per motherboard ARGB zone (e.g. 8 for an MSI JARGB header). "
+                          "Set the number, then click Size zones.");
+    connect(zoneSpin_, &QSpinBox::valueChanged, this, [](int v){ QSettings().setValue("mirror/zoneLeds", v); });
     auto* setMod = new QPushButton("Set selected mode", adv);
     spreadChk_   = new QCheckBox("Spread (whole strip per device)", adv);
     spread_ = s.value("mirror/spread", false).toBool();
@@ -245,13 +286,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     wrapChk_->setChecked(wrap_);
     wrapChk_->setToolTip("Distribute the WLED strip ONCE across all ticked devices in sequence, "
                          "so the colour flows from one device to the next.");
-    ag->addWidget(rescan); ag->addWidget(maxZ); ag->addWidget(setMod);
+    ag->addWidget(rescan); ag->addWidget(maxZ); ag->addWidget(zoneSpin_); ag->addWidget(setMod);
     ag->addWidget(spreadChk_); ag->addWidget(wrapChk_); ag->addStretch(1);
     connect(adv, &QGroupBox::toggled, this, [rescan, maxZ, setMod, this](bool on){
-        rescan->setVisible(on); maxZ->setVisible(on); setMod->setVisible(on);
+        rescan->setVisible(on); maxZ->setVisible(on); zoneSpin_->setVisible(on); setMod->setVisible(on);
         spreadChk_->setVisible(on); wrapChk_->setVisible(on);
     });
-    rescan->setVisible(false); maxZ->setVisible(false); setMod->setVisible(false);
+    rescan->setVisible(false); maxZ->setVisible(false); zoneSpin_->setVisible(false); setMod->setVisible(false);
     spreadChk_->setVisible(false); wrapChk_->setVisible(false);
 
     // --- options group --------------------------------------------------------
@@ -275,6 +316,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     layout->addLayout(bRow);
     layout->addLayout(gRow);
     layout->addLayout(fRow);
+    layout->addLayout(iRow);
     layout->addWidget(mirBtn_);
     layout->addWidget(adv);
     layout->addWidget(opts);
@@ -343,25 +385,36 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(ipc_, &IpcClient::frame, this, [this](const QColor& avg, const QList<QColor>& cols) {
         wledColour_ = avg;
         const int b = bright_->value(), g = gain_->value(), fl = floor_->value();
-        paintSwatch(swatchW_, avg);
-        paintSwatch(swatchP_, mapColor(avg, b, g, fl));
-        setWindowTitle(baseTitle_ + " · WLED " + avg.name());
+        const bool off = !wledOn_;                         // WLED powered off
+        const QColor idle = idleOn_ ? idleColor_ : QColor(0, 0, 0);   // what an "off" LED shows
+        const QColor pc = off ? idle : withIdle(mapColor(avg, b, g, fl), idleOn_, idleColor_);
+
+        // Cosmetics (swatches + title) don't need the full frame rate — throttle to ~10 Hz
+        // so the GUI doesn't churn while devices update every frame.
+        static QElapsedTimer cos;
+        if (!cos.isValid() || cos.elapsed() > 100) {
+            cos.restart();
+            paintSwatch(swatchW_, off ? QColor(0, 0, 0) : avg);
+            paintSwatch(swatchP_, pc);
+            setWindowTitle(baseTitle_ + " · WLED " + avg.name());
+        }
         if (!mirroring_) return;
-        if (!wledOn_) { status_->setText("WLED is off — mirror paused (PC RGB held)."); return; }
 
         static QElapsedTimer reopen;                       // self-heal the mirror socket
         if (!mirror_.alive() && (!reopen.isValid() || reopen.elapsed() > 2000)) {
             reopen.restart(); QString e;
             if (mirror_.open(kHost, kPort, &e)) pushIncluded();
         }
-        if (!mirror_.alive()) { status_->setText("Reconnecting to OpenRGB…"); return; }
+        if (!mirror_.alive()) return;
+
+        if (off) { mirror_.apply(idle); return; }          // WLED off → PC off (or idle colour)
 
         if (wrap_ || spread_) {
             QList<QColor> sc; sc.reserve(cols.size());
-            for (const QColor& c : cols) sc.push_back(mapColor(c, b, g, fl));
+            for (const QColor& c : cols) sc.push_back(withIdle(mapColor(c, b, g, fl), idleOn_, idleColor_));
             if (wrap_) mirror_.applyWrapped(sc); else mirror_.applyBuckets(sc);
         } else {
-            mirror_.apply(mapColor(avg, b, g, fl));
+            mirror_.apply(pc);
         }
     });
     ipc_->start(kIpcPort);
@@ -521,7 +574,8 @@ static QIcon swatchIcon(const QColor& c) { QPixmap pm(14, 14); pm.fill(c); retur
 void MainWindow::refresh() {
     building_ = true;
     tree_->clear();
-    OrgbClient::resizeZones(kHost, kPort, kDefaultZoneLeds, /*onlyZero*/true, nullptr);
+    const int zoneLeds = zoneSpin_ ? zoneSpin_->value() : kDefaultZoneLeds;
+    OrgbClient::resizeZones(kHost, kPort, zoneLeds, /*onlyZero*/true, nullptr);
 
     QString err;
     auto devices = OrgbClient::load(kHost, kPort, &err);
@@ -635,8 +689,9 @@ void MainWindow::activateMode(QTreeWidgetItem* item) {
 }
 
 void MainWindow::maxZones() {
+    const int target = zoneSpin_ ? zoneSpin_->value() : kDefaultZoneLeds;
     QString err;
-    const int n = OrgbClient::resizeZones(kHost, kPort, kDefaultZoneLeds, /*onlyZero*/false, &err);
-    if (n >= 0) { status_->setText(QString("Sized %1 motherboard zone(s) to %2 LEDs — rescanning…").arg(n).arg(kDefaultZoneLeds)); refresh(); }
+    const int n = OrgbClient::resizeZones(kHost, kPort, target, /*onlyZero*/false, &err);
+    if (n >= 0) { status_->setText(QString("Sized %1 motherboard zone(s) to %2 LEDs — rescanning…").arg(n).arg(target)); refresh(); }
     else status_->setText("⚠  " + err);
 }
