@@ -407,7 +407,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         }
         if (!mirror_.alive()) return;
 
-        if (off) { mirror_.apply(idle); return; }          // WLED off → PC off (or idle colour)
+        if (off) {                                         // WLED off → PC off (or idle colour)
+            mirror_.apply(idle);
+            if (kraken_.isOpen()) kraken_.setRingColor(idle);
+            return;
+        }
 
         if (wrap_ || spread_) {
             QList<QColor> sc; sc.reserve(cols.size());
@@ -416,6 +420,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         } else {
             mirror_.apply(pc);
         }
+        // The Kraken ring goes through the direct HID driver (fast) instead of OpenRGB.
+        if (kraken_.isOpen()) kraken_.setRingColor(pc);
     });
     ipc_->start(kIpcPort);
 
@@ -447,9 +453,14 @@ void MainWindow::setMirroring(bool on) {
     if (on && !mirroring_) {
         QString e;
         if (!mirror_.open(kHost, kPort, &e)) { status_->setText("⚠  " + e); on = false; }
-        else { mirroring_ = true; pushIncluded(); }
+        else {
+            mirroring_ = true; pushIncluded();
+            // If a Kraken Elite is present, drive its ring directly (fast) and stop OpenRGB
+            // from also driving it (its path is what lagged by seconds).
+            mirror_.setDriveCoolers(!kraken_.open());
+        }
     } else if (!on && mirroring_) {
-        mirror_.close(); mirroring_ = false; status_->setText("Mirror off.");
+        mirror_.close(); kraken_.close(); mirroring_ = false; status_->setText("Mirror off.");
     }
     QSignalBlocker b1(mirBtn_), b2(trayMirror_);
     mirBtn_->setChecked(mirroring_);

@@ -56,6 +56,7 @@ public:
     ~OrgbMirror();
     bool open(const QString& host, quint16 port, QString* error);  // caches eligible devices (leds>0, not DRAM)
     void setIncluded(const QList<int>& deviceIndices);             // which detected devices to actually drive
+    void setDriveCoolers(bool on) { driveCoolers_ = on; }          // false when a bespoke driver owns the cooler
     void apply(const QColor& color);
     void applyBuckets(const QList<QColor>& cols);   // stretch the whole strip across EACH device's LEDs
     void applyWrapped(const QList<QColor>& cols);    // distribute the strip ONCE across all devices in sequence
@@ -76,4 +77,5 @@ private:
     std::set<int> included_;                 // device indices actually driven
     std::map<int, quint32> coolerLast_;      // cooler idx -> last colour sent
     std::map<int, qint64>  coolerAt_;        // cooler idx -> last send time (ms since epoch)
+    bool driveCoolers_ = true;               // false: skip type-4 (a bespoke driver owns it)
 };

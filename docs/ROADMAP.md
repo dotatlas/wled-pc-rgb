@@ -14,6 +14,8 @@ versions, read the [CHANGELOG](../CHANGELOG.md).
 - ✅ Position modes: *Spread* (the full strip on each device) and *Wrap* (the strip across
   all devices).
 - ✅ A zone size that you can set.
+- ✅ Direct HID control of the NZXT Kraken 2024 Elite ring (real time; it does not use
+  OpenRGB's slow path for this device).
 - ✅ The app starts OpenRGB and the WLED helper, stays in the tray, can start at login or
   start small, and keeps the settings.
 - ✅ A portable, one-folder Windows release.

@@ -357,7 +357,10 @@ void OrgbMirror::apply(const QColor& color) {
     if (!sock_ || sock_->state() != QAbstractSocket::ConnectedState) return;
     for (const Dev& d : devs_) {
         if (!included_.count(d.idx)) continue;
-        if (d.type == 4 && !coolerDue(d.idx, packRGB(color))) continue;   // throttle the cooler
+        if (d.type == 4) {
+            if (!driveCoolers_) continue;                                 // bespoke driver owns the cooler
+            if (!coolerDue(d.idx, packRGB(color))) continue;              // throttle the cooler
+        }
         driveDevice(*sock_, d, ver_, color);
     }
 }
@@ -370,7 +373,7 @@ void OrgbMirror::applyBuckets(const QList<QColor>& cols) {
     for (const Dev& d : devs_) {
         if (!included_.count(d.idx)) continue;
         if (d.type == 4 && !d.modeRaw.isEmpty()) {
-            if (coolerDue(d.idx, packRGB(avg))) driveDevice(*sock_, d, ver_, avg);   // throttle the cooler
+            if (driveCoolers_ && coolerDue(d.idx, packRGB(avg))) driveDevice(*sock_, d, ver_, avg);
             continue;
         }
         QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
@@ -404,7 +407,7 @@ void OrgbMirror::applyWrapped(const QList<QColor>& cols) {
             long r = 0, g = 0, b = 0;
             for (int j = 0; j < ledN; ++j) { const QColor& c = cols[wrapBucket(offset + j, total, nB)]; r += c.red(); g += c.green(); b += c.blue(); }
             const QColor cc(int(r / ledN), int(g / ledN), int(b / ledN));
-            if (coolerDue(d.idx, packRGB(cc))) driveDevice(*sock_, d, ver_, cc);   // throttle the cooler
+            if (driveCoolers_ && coolerDue(d.idx, packRGB(cc))) driveDevice(*sock_, d, ver_, cc);
         } else {
             QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
             for (int j = 0; j < d.ledN; ++j) {

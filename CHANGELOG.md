@@ -3,6 +3,15 @@
 This is a list of the important changes to **wled-pc-rgb**. The newest is first. Each
 version is a git tag (`vX.Y`).
 
+## v1.2
+
+- **The NZXT Kraken Elite ring now updates live.** Before, the ring color went through
+  OpenRGB, which was slow — the ring changed only after some seconds or minutes. The app
+  now talks to the Kraken ring directly over USB (HID), with the same lighting commands
+  that OpenRGB and NZXT CAM use (HUE2 "Direct" streaming). So the ring follows WLED in real
+  time. This applies only to the NZXT Kraken 2024 Elite; it does not change other coolers.
+  You can test the ring with `wled_pc_rgb.exe --kraken #rrggbb`.
+
 ## v1.1.1
 
 - **Fix the Kraken ring lag.** The NZXT Kraken ring shows a color with a full mode-update.

@@ -8,6 +8,7 @@
 #include <QString>
 #include <QList>
 #include "orgb_client.h"
+#include "kraken_driver.h"
 
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -76,6 +77,7 @@ private:
     IpcClient*  ipc_ = nullptr;
     QProcess*   backend_ = nullptr;
     OrgbMirror  mirror_;
+    KrakenDriver kraken_;         // direct HID for the NZXT Kraken ring (fast, bypasses OpenRGB)
     bool  mirroring_ = false, spread_ = false, wrap_ = false, building_ = false, stopping_ = false;
     bool  idleOn_ = false;
     QColor idleColor_ = QColor(20, 20, 40);

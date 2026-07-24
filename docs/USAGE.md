@@ -84,9 +84,13 @@ Mirror, and Quit.
 
 ## 5. Device notes
 
-- **NZXT Kraken ring** — it shows light only in a single-color mode. The app sets it to
-  Static automatically when it mirrors, so the ring follows WLED. Its default *Direct* mode
-  does not light the ring.
+- **NZXT Kraken 2024 Elite ring** — the app drives this ring **directly over USB**, not
+  through OpenRGB (OpenRGB drives it too slowly, so the ring lagged by seconds). So the ring
+  follows WLED in real time. It sends only lighting commands (the same ones OpenRGB and NZXT
+  CAM use). NZXT CAM can keep control of the **LCD screen** at the same time (the screen and
+  the ring are separate). Test the ring with `wled_pc_rgb.exe --kraken #rrggbb`.
+- **Other NZXT Kraken models** — the app sets the ring to Static mode through OpenRGB so it
+  follows WLED. Its default *Direct* mode does not light the ring.
 - **GPU (RTX)** — OpenRGB finds it, but the RGB shows light only when you run **OpenRGB as
   administrator**. By default the app runs OpenRGB without administrator rights. (An elevated
   OpenRGB reads the motherboard SMBus/DDR5, which is a risk to the RAM.) The device list
