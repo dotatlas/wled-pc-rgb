@@ -3,6 +3,14 @@
 This is a list of the important changes to **wled-pc-rgb**. The newest is first. Each
 version is a git tag (`vX.Y`).
 
+## v1.4.1
+
+- **The Kraken ring shows one solid color that follows WLED live.** The ring cannot show a
+  per-LED pattern reliably (the device collapses per-LED data to nothing), but one color
+  displays well and fast. So the ring now shows a single color — the average of what the
+  other devices show — updated every frame, even in Spread or Wrap mode. It flashes and
+  changes color live with WLED. This is the Kraken-specific pipeline.
+
 ## v1.4
 
 - **The Kraken ring shows the strip smoothly.** Before, the ring could show a fixed

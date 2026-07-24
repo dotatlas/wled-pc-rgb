@@ -341,17 +341,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             return;
         }
 
-        // The scaled per-LED strip — used by the positional mirror modes AND by the bespoke
-        // pipelines, so the Kraken ring shows the strip (flashes/moves) rather than a flat
-        // average.
-        QList<QColor> sc; sc.reserve(cols.size());
-        for (const QColor& c : cols) sc.push_back(scale(c, b));
+        if (wrap_ || spread_) {                            // positional modes need the per-LED strip
+            QList<QColor> sc; sc.reserve(cols.size());
+            for (const QColor& c : cols) sc.push_back(scale(c, b));
+            if (wrap_) mirror_.applyWrapped(sc); else mirror_.applyBuckets(sc);
+        } else {
+            mirror_.apply(pc);
+        }
 
-        if (wrap_)        mirror_.applyWrapped(sc);
-        else if (spread_) mirror_.applyBuckets(sc);
-        else              mirror_.apply(pc);
+        // The Kraken ring can't render a per-LED pattern reliably (per-LED Direct data
+        // collapses on the device), but a single colour displays perfectly and fast. So the
+        // ring always shows ONE colour — the average PC colour (pc) — updated every frame,
+        // even in Spread/Wrap. This is the Kraken-specific pipeline.
 
-        for (DevicePipeline* p : pipelines_) if (p->isOpen()) p->apply(sc);
+        for (DevicePipeline* p : pipelines_) if (p->isOpen()) p->apply(pc);
     });
     ipc_->start(kIpcPort);
 
