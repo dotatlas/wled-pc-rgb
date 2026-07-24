@@ -10,6 +10,7 @@
 // pipeline replaces, so the generic path leaves that device alone (no double-driving).
 #pragma once
 #include <QColor>
+#include <QList>
 #include <QString>
 
 class DevicePipeline {
@@ -21,6 +22,7 @@ public:
 
     virtual bool open() = 0;             // acquire the device; true if present
     virtual bool isOpen() const = 0;
-    virtual void apply(const QColor& color) = 0;   // drive the device to this colour
+    virtual void apply(const QColor& color) = 0;          // whole device, one colour
+    virtual void apply(const QList<QColor>& strip) = 0;   // per-LED: the device resamples the strip to its own LEDs
     virtual void close() = 0;
 };

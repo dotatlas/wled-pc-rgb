@@ -3,6 +3,12 @@
 This is a list of the important changes to **wled-pc-rgb**. The newest is first. Each
 version is a git tag (`vX.Y`).
 
+## v1.3.1
+
+- **The Kraken ring now moves with everything else.** Before, the ring showed one average
+  color, so it did not flash or move like the fans. Now the app streams the WLED strip across
+  the ring's LEDs, so the ring shows the same motion and flashes as the rest of your RGB.
+
 ## v1.3
 
 - **One brightness slider.** Before, three controls (PC brightness, flash gain, minimum

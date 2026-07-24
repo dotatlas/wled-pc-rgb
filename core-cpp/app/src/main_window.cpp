@@ -310,16 +310,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             return;
         }
 
-        if (wrap_ || spread_) {
-            QList<QColor> sc; sc.reserve(cols.size());
-            for (const QColor& c : cols) sc.push_back(scale(c, b));
-            if (wrap_) mirror_.applyWrapped(sc); else mirror_.applyBuckets(sc);
-        } else {
-            mirror_.apply(pc);
-        }
-        // Bespoke devices (e.g. the Kraken ring) are driven through their own pipeline,
-        // not OpenRGB. They get the average PC colour.
-        for (DevicePipeline* p : pipelines_) if (p->isOpen()) p->apply(pc);
+        // The scaled per-LED strip — used by the positional mirror modes AND by the bespoke
+        // pipelines, so the Kraken ring shows the strip (flashes/moves) rather than a flat
+        // average.
+        QList<QColor> sc; sc.reserve(cols.size());
+        for (const QColor& c : cols) sc.push_back(scale(c, b));
+
+        if (wrap_)        mirror_.applyWrapped(sc);
+        else if (spread_) mirror_.applyBuckets(sc);
+        else              mirror_.apply(pc);
+
+        for (DevicePipeline* p : pipelines_) if (p->isOpen()) p->apply(sc);
     });
     ipc_->start(kIpcPort);
 

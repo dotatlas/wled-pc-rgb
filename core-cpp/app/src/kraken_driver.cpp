@@ -101,3 +101,17 @@ void KrakenDriver::setRingColor(const QColor& c) {
     for (int i = 0; i < kRingLeds; ++i) leds.push_back(c);
     setRing(leds);
 }
+
+// Resample the WLED strip (any length) onto the ring's LEDs, so the ring shows the strip's
+// gradient/motion instead of one flat average — it flashes and moves with everything else.
+void KrakenDriver::apply(const QList<QColor>& strip) {
+    if (strip.isEmpty()) return;
+    QList<QColor> ring;
+    ring.reserve(kRingLeds);
+    for (int i = 0; i < kRingLeds; ++i) {
+        int idx = i * strip.size() / kRingLeds;
+        if (idx >= strip.size()) idx = strip.size() - 1;
+        ring.push_back(strip[idx]);
+    }
+    setRing(ring);
+}

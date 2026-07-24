@@ -23,6 +23,7 @@ public:
     bool open() override;                        // find + open the Kraken Elite; true if present
     bool isOpen() const override { return dev_ != nullptr; }
     void apply(const QColor& c) override { setRingColor(c); }
+    void apply(const QList<QColor>& strip) override;   // resample the strip onto the ring's LEDs
     void close() override;
 
     void setRingColor(const QColor& c);          // solid ring colour
