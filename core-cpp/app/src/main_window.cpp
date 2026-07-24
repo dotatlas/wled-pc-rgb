@@ -73,11 +73,11 @@ void paintSwatch(QLabel* l, const QColor& c) {
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     QSettings s;
     wledHost_ = s.value("wled/host", "wled.local").toString();
-    pipelines_ = { &kraken_ };   // bespoke per-device drivers; add more here as devices need them
-    // Default blacklist: any bespoke-driven device that is actually present. Probe each
-    // pipeline once; if its device is here, hide it from the OpenRGB scan (the pipeline
-    // drives it directly). Session only — resets on restart. Re-add it via Advanced.
-    for (DevicePipeline* p : pipelines_) if (p->open()) { blacklist_ << p->match(); p->close(); }
+    // The NZXT Kraken is left to its own software (e.g. NZXT CAM): its ring can't be updated
+    // live over HID (the device throttles streamed colour badly), so we don't drive it at
+    // all. Blacklisting hides it from the scan and keeps OpenRGB off it, so CAM owns it.
+    // Session only — resets on restart; re-add via Advanced to let OpenRGB drive it instead.
+    blacklist_ = { "kraken" };
 
     setWindowTitle(baseTitle_);
     resize(660, 640);
@@ -335,11 +335,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         }
         if (!mirror_.alive()) return;
 
-        if (off) {                                         // WLED off → everything off
-            mirror_.apply(QColor(0, 0, 0));
-            for (DevicePipeline* p : pipelines_) if (p->isOpen()) p->apply(QColor(0, 0, 0));
-            return;
-        }
+        if (off) { mirror_.apply(QColor(0, 0, 0)); return; }   // WLED off → PC off
 
         if (wrap_ || spread_) {                            // positional modes need the per-LED strip
             QList<QColor> sc; sc.reserve(cols.size());
@@ -348,13 +344,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         } else {
             mirror_.apply(pc);
         }
-
-        // The Kraken ring can't render a per-LED pattern reliably (per-LED Direct data
-        // collapses on the device), but a single colour displays perfectly and fast. So the
-        // ring always shows ONE colour — the average PC colour (pc) — updated every frame,
-        // even in Spread/Wrap. This is the Kraken-specific pipeline.
-
-        for (DevicePipeline* p : pipelines_) if (p->isOpen()) p->apply(pc);
     });
     ipc_->start(kIpcPort);
 
@@ -384,22 +373,11 @@ void MainWindow::maybeAutoMirror() {
 
 void MainWindow::setMirroring(bool on) {
     if (on && !mirroring_) {
-        // OpenRGB ignores every blacklisted device. A bespoke pipeline drives its device
-        // only if that device is blacklisted (hidden); otherwise the device is left to
-        // OpenRGB (the fallback), so a device the pipeline can't own still lights.
-        mirror_.setSkip(blacklist_);
-        for (DevicePipeline* p : pipelines_) {
-            if (blacklist_.contains(p->match(), Qt::CaseInsensitive)) p->open(); else p->close();
-        }
+        mirror_.setSkip(blacklist_);        // OpenRGB ignores blacklisted devices (e.g. the Kraken)
         QString e;
-        if (!mirror_.open(kHost, kPort, &e)) {
-            status_->setText("⚠  " + e); on = false;
-            for (DevicePipeline* p : pipelines_) p->close();
-        } else {
-            mirroring_ = true; pushIncluded();
-        }
+        if (!mirror_.open(kHost, kPort, &e)) { status_->setText("⚠  " + e); on = false; }
+        else { mirroring_ = true; pushIncluded(); }
     } else if (!on && mirroring_) {
-        for (DevicePipeline* p : pipelines_) { if (p->isOpen()) p->apply(QColor(0, 0, 0)); p->close(); }
         mirror_.close(); mirroring_ = false; status_->setText("Mirror off.");
     }
     QSignalBlocker b1(mirBtn_), b2(trayMirror_);

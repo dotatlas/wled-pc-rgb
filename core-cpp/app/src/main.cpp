@@ -1,4 +1,4 @@
-// wled-pc-rgb — v1.4.1: the WLED mirror.
+// wled-pc-rgb — v1.5: the WLED mirror.
 // The window (MainWindow) owns the tray, the setup strip, the device list and all
 // persisted settings. main() keeps the headless CLI helpers, the single-instance
 // guard, and the start-minimised behaviour.
@@ -9,14 +9,10 @@
 #include <QSettings>
 #include <QColor>
 #include <QTimer>
-#include <QFile>
-#include <QDir>
-#include <QTextStream>
 
 #include "main_window.h"
 #include "orgb_client.h"
 #include "ipc_client.h"
-#include "kraken_driver.h"
 
 namespace {
 constexpr auto kInstanceKey = "wled-pc-rgb.singleton";
@@ -26,7 +22,7 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     app.setApplicationName("wled-pc-rgb");
-    app.setApplicationVersion("1.4.1");
+    app.setApplicationVersion("1.5");
     app.setOrganizationName("wled-pc-rgb");
     app.setQuitOnLastWindowClosed(false);   // closing the window hides to tray
 
@@ -49,21 +45,6 @@ int main(int argc, char** argv)
     }
     if (args.indexOf("--maxzones") > 0) {                                      // resize all resizable zones to the default
         QString e; return OrgbClient::resizeZones("127.0.0.1", 6742, 24, false, &e) >= 0 ? 0 : 2;
-    }
-    if (int i = args.indexOf("--kraken"); i > 0 && i + 1 < args.size()) {      // --kraken <#rrggbb> : test the ring
-        KrakenDriver k;
-        if (!k.open()) return 2;                                               // no Kraken Elite found
-        k.setRingColor(QColor(args[i+1]));
-        return 0;
-    }
-    if (int i = args.indexOf("--krakenbench"); i > 0) {                        // --krakenbench [secs] : measure ring FPS
-        const int secs = (i + 1 < args.size()) ? args[i+1].toInt() : 6;
-        KrakenDriver k;
-        if (!k.open()) return 2;
-        const QString report = k.benchmark(secs);
-        QFile f(QDir::tempPath() + "/wled-kraken-bench.txt");
-        if (f.open(QIODevice::WriteOnly | QIODevice::Text)) { QTextStream(&f) << report; }
-        return 0;
     }
     if (int i = args.indexOf("--mirror"); i > 0) {                             // --mirror [seconds] [spread|wrap]
         const int secs = (i + 1 < args.size()) ? args[i+1].toInt() : 5;

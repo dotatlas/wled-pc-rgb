@@ -3,6 +3,15 @@
 This is a list of the important changes to **wled-pc-rgb**. The newest is first. Each
 version is a git tag (`vX.Y`).
 
+## v1.5
+
+- **The Kraken ring is left to NZXT CAM.** Testing showed the ring cannot update live over
+  USB — the device throttles streamed color badly (a large delay), and per-LED data does not
+  display. So the app no longer drives the Kraken ring at all. The Kraken is hidden from the
+  device list by default (blacklisted), so OpenRGB does not touch it and NZXT CAM (or another
+  program) controls the ring and the screen. To let OpenRGB drive it instead, re-add it in
+  Advanced. This also removed the direct USB driver and the hidapi library.
+
 ## v1.4.1
 
 - **The Kraken ring shows one solid color that follows WLED live.** The ring cannot show a

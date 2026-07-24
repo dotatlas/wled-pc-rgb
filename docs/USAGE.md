@@ -76,13 +76,11 @@ Mirror, and Quit.
   is hidden from the device list, because it does not use OpenRGB. In Advanced, the "Hidden
   (driven directly)" dropdown shows these, and "Re-add to scan" puts one back so OpenRGB
   drives it instead. This is for the session only; it resets when you close the app.
-- **NZXT Kraken 2024 Elite ring** — the app drives this ring **directly over USB**, not
-  through OpenRGB (OpenRGB drives it too slowly, so the ring lagged by seconds). So the ring
-  follows WLED in real time. It sends only lighting commands (the same ones OpenRGB and NZXT
-  CAM use). NZXT CAM can keep control of the **LCD screen** at the same time (the screen and
-  the ring are separate). Test the ring with `wled_pc_rgb.exe --kraken #rrggbb`.
-- **Other NZXT Kraken models** — the app sets the ring to Static mode through OpenRGB so it
-  follows WLED. Its default *Direct* mode does not light the ring.
+- **NZXT Kraken (ring and LCD)** — the app does **not** control the Kraken. Its ring cannot
+  update live over USB (the device throttles streamed color, so it lags badly), and only its
+  own built-in effects animate smoothly — which cannot mirror WLED. So the app **hides the
+  Kraken** from the device list and leaves it to **NZXT CAM** (or another program) to control
+  the ring and the LCD. If you want OpenRGB to drive it instead, re-add it in Advanced.
 - **GPU (RTX)** — OpenRGB finds it, but the RGB shows light only when you run **OpenRGB as
   administrator**. By default the app runs OpenRGB without administrator rights. (An elevated
   OpenRGB reads the motherboard SMBus/DDR5, which is a risk to the RAM.) The device list
