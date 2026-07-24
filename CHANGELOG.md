@@ -3,6 +3,22 @@
 This is a list of the important changes to **wled-pc-rgb**. The newest is first. Each
 version is a git tag (`vX.Y`).
 
+## v1.3
+
+- **One brightness slider.** Before, three controls (PC brightness, flash gain, minimum
+  brightness) changed the brightness together, which was confusing (you had to set more than
+  one to 100% for full brightness). Now there is one **Brightness** slider for the whole
+  mirror. The flash gain, the minimum brightness, and the "when off, show color" option are
+  removed.
+- **All devices on by default.** The app now enables every RGB device it finds, each time.
+  You can still turn a device off in the list.
+- **Direct mode.** When the mirror starts, the app puts each device in its "Direct" mode (if
+  it has one), so the colors show. This fixes the GPU, which started in an "off" mode.
+- **The Kraken ring is its own device.** The app drives the Kraken ring only through its
+  direct USB driver; OpenRGB does not touch it. This removes the conflict where the ring
+  grabbed a color at random or got stuck when you changed modes. The code now has a
+  per-device pipeline layer, so more devices can get their own driver later.
+
 ## v1.2
 
 - **The NZXT Kraken Elite ring now updates live.** Before, the ring color went through

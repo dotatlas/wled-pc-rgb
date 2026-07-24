@@ -16,6 +16,9 @@ versions, read the [CHANGELOG](../CHANGELOG.md).
 - ✅ A zone size that you can set.
 - ✅ Direct HID control of the NZXT Kraken 2024 Elite ring (real time; it does not use
   OpenRGB's slow path for this device).
+- ✅ A per-device pipeline layer (`DevicePipeline`): the mirror decides a color, and a
+  device-specific driver handles the communication. The Kraken ring is the first one; more
+  devices can get their own driver without touching the generic path.
 - ✅ The app starts OpenRGB and the WLED helper, stays in the tray, can start at login or
   start small, and keeps the settings.
 - ✅ A portable, one-folder Windows release.

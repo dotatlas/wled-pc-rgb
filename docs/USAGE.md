@@ -61,21 +61,9 @@ Mirror, and Quit.
       selected devices in sequence. The color moves from one device to the next (for example
       GPU → fans → Kraken ring → mouse). The Kraken ring shows the average of its part.
   The two modes are exclusive. Turn both off for one average color on all devices.
-- **PC brightness** — this slider changes the PC only. It makes the PC color darker. It does
-  not change the brightness of WLED.
-- **Flash gain** (1.0× to 5.0×) — use this when the flashes are too dim on the PC. It makes
-  the color brighter, up to full brightness. Thus a weak flash on the strip becomes a bright
-  flash on your fans or ring. 1.0× makes no change.
-- **Min brightness** (0% to 100%) — this lifts *dim* colors, so the PC does not go almost
-  dark between flashes. Bright flashes still show above it. A dim color keeps its color (a
-  dim red becomes a brighter red). A fully black frame stays **off** — the floor does not
-  make black into light. 0% follows WLED exactly.
-
-  The three sliders work together. **Brightness** sets the level. **Gain** makes flashes
-  brighter. **Min brightness** lifts dim colors. The app keeps all three between runs.
-- **When off, show color** — by default, an off or black LED stays off. This is for a dark
-  part of the strip, or for WLED turned off. To show a color there, select the checkbox and
-  pick a color. The color button is to the right of the checkbox.
+- **Brightness** — one slider for the whole mirror. It makes the PC colors darker or
+  brighter. 100% shows the WLED colors as they are. It changes the PC only; it does not
+  change the brightness of WLED. A black frame is off (0 stays 0).
 - **Start with Windows** — in Options, select *Launch at login* and *Start minimised to
   tray*. This makes a background mirror. *Auto-mirror on launch* starts the mirror when the
   app is ready.

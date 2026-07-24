@@ -9,6 +9,7 @@
 #include <QList>
 #include "orgb_client.h"
 #include "kraken_driver.h"
+#include "device_pipeline.h"
 
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -43,7 +44,6 @@ private:
     void startBackend();
     void connectHostFromField();   // apply the WLED host field + restart backend
     QList<int> gatherChecked();
-    void saveCheckedDevices();
     void maybeAutoMirror();
     void pushIncluded();
     void activateMode(QTreeWidgetItem*);
@@ -60,14 +60,10 @@ private:
     QLineEdit* hostEdit_ = nullptr;
     QLabel*  swatchW_ = nullptr; QLabel* swatchP_ = nullptr;
     QSlider* bright_  = nullptr;
-    QSlider* gain_    = nullptr;
-    QSlider* floor_   = nullptr;
     QPushButton* mirBtn_ = nullptr;
     QCheckBox*   spreadChk_ = nullptr;
     QCheckBox*   wrapChk_   = nullptr;
     QSpinBox*    zoneSpin_  = nullptr;
-    QCheckBox*   idleChk_   = nullptr;
-    QPushButton* idleBtn_   = nullptr;
     QCheckBox*   autoMirrorChk_ = nullptr;
     QCheckBox*   autostartChk_  = nullptr;
     QCheckBox*   startMinChk_   = nullptr;
@@ -77,10 +73,9 @@ private:
     IpcClient*  ipc_ = nullptr;
     QProcess*   backend_ = nullptr;
     OrgbMirror  mirror_;
-    KrakenDriver kraken_;         // direct HID for the NZXT Kraken ring (fast, bypasses OpenRGB)
+    KrakenDriver kraken_;              // direct HID for the NZXT Kraken ring (fast, bypasses OpenRGB)
+    QList<DevicePipeline*> pipelines_; // bespoke per-device drivers (currently the Kraken)
     bool  mirroring_ = false, spread_ = false, wrap_ = false, building_ = false, stopping_ = false;
-    bool  idleOn_ = false;
-    QColor idleColor_ = QColor(20, 20, 40);
     bool  openrgbReady_ = false, backendUp_ = false, wledReachable_ = false, wledOn_ = true;
     int   zeroRetries_ = 0, backendFails_ = 0, backendDelayMs_ = 1500;
     QColor wledColour_;

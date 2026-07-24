@@ -11,17 +11,22 @@
 #pragma once
 #include <QColor>
 #include <QList>
+#include "device_pipeline.h"
 
 struct hid_device_;   // hidapi opaque handle (fwd)
 
-class KrakenDriver {
+class KrakenDriver : public DevicePipeline {
 public:
-    ~KrakenDriver();
-    bool open();                                 // find + open the Kraken Elite; true if present
-    bool isOpen() const { return dev_ != nullptr; }
+    ~KrakenDriver() override;
+    QString name()  const override { return "NZXT Kraken Elite ring"; }
+    QString match() const override { return "kraken"; }   // OpenRGB names it "NZXT Kraken 2024 ELITE Series RGB"
+    bool open() override;                        // find + open the Kraken Elite; true if present
+    bool isOpen() const override { return dev_ != nullptr; }
+    void apply(const QColor& c) override { setRingColor(c); }
+    void close() override;
+
     void setRingColor(const QColor& c);          // solid ring colour
     void setRing(const QList<QColor>& leds);     // per-LED ring colours (GRB streamed)
-    void close();
 
 private:
     bool sendDirect(unsigned char channel, unsigned char group, unsigned char count, const unsigned char* grb);

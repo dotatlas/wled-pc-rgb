@@ -305,18 +305,24 @@ bool OrgbMirror::open(const QString& host, quint16 port, QString* error) {
         if (!requestDevice(*s, i, ver, d)) continue;
         if (d.type == 1) continue;                 // never drive DRAM (RAM scrapped for safety)
         if (d.leds.empty()) continue;              // nothing to light
+        bool skip = false;                         // a bespoke pipeline owns this device
+        for (const QString& sub : skip_) if (d.name.contains(sub, Qt::CaseInsensitive)) { skip = true; break; }
+        if (skip) continue;
         int am = d.activeMode;
         QByteArray mraw = (am >= 0 && am < int(d.modes.size())) ? d.modes[size_t(am)].raw : QByteArray();
-        if (d.type == 4) {   // cooler (Kraken): it lights only in a single-colour mode — prefer Static
-            for (int m = 0; m < int(d.modes.size()); ++m) {
-                if (d.modes[size_t(m)].name.compare(QLatin1String("Static"), Qt::CaseInsensitive) == 0
-                        && !d.modes[size_t(m)].raw.isEmpty()) {
-                    QByteArray p; put32(p, quint32(4 + 4 + d.modes[size_t(m)].raw.size()));
-                    put32(p, quint32(m)); p.append(d.modes[size_t(m)].raw);
-                    sendPacket(*s, quint32(i), CMD_UPDATE_MODE, p);   // activate Static so the ring shows our colour
-                    am = m; mraw = d.modes[size_t(m)].raw;
-                    break;
-                }
+        // Put the device in the mode where our per-frame writes actually show. Everything
+        // prefers "Direct" (per-LED, host-controlled) — this fixes devices (e.g. the GPU)
+        // that default to "off". Coolers instead need "Static" (their ring lights only in a
+        // single-colour mode). Switch to the wanted mode if the device has it.
+        const char* want = (d.type == 4) ? "Static" : "Direct";
+        for (int m = 0; m < int(d.modes.size()); ++m) {
+            if (d.modes[size_t(m)].name.compare(QLatin1String(want), Qt::CaseInsensitive) == 0
+                    && !d.modes[size_t(m)].raw.isEmpty()) {
+                QByteArray p; put32(p, quint32(4 + 4 + d.modes[size_t(m)].raw.size()));
+                put32(p, quint32(m)); p.append(d.modes[size_t(m)].raw);
+                sendPacket(*s, quint32(i), CMD_UPDATE_MODE, p);   // activate the host-controlled mode
+                am = m; mraw = d.modes[size_t(m)].raw;
+                break;
             }
         }
         devs_.push_back(Dev{int(i), int(d.leds.size()), d.type, am, mraw});
@@ -357,10 +363,7 @@ void OrgbMirror::apply(const QColor& color) {
     if (!sock_ || sock_->state() != QAbstractSocket::ConnectedState) return;
     for (const Dev& d : devs_) {
         if (!included_.count(d.idx)) continue;
-        if (d.type == 4) {
-            if (!driveCoolers_) continue;                                 // bespoke driver owns the cooler
-            if (!coolerDue(d.idx, packRGB(color))) continue;              // throttle the cooler
-        }
+        if (d.type == 4 && !coolerDue(d.idx, packRGB(color))) continue;   // throttle the cooler
         driveDevice(*sock_, d, ver_, color);
     }
 }
@@ -373,7 +376,7 @@ void OrgbMirror::applyBuckets(const QList<QColor>& cols) {
     for (const Dev& d : devs_) {
         if (!included_.count(d.idx)) continue;
         if (d.type == 4 && !d.modeRaw.isEmpty()) {
-            if (driveCoolers_ && coolerDue(d.idx, packRGB(avg))) driveDevice(*sock_, d, ver_, avg);
+            if (coolerDue(d.idx, packRGB(avg))) driveDevice(*sock_, d, ver_, avg);
             continue;
         }
         QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
@@ -407,7 +410,7 @@ void OrgbMirror::applyWrapped(const QList<QColor>& cols) {
             long r = 0, g = 0, b = 0;
             for (int j = 0; j < ledN; ++j) { const QColor& c = cols[wrapBucket(offset + j, total, nB)]; r += c.red(); g += c.green(); b += c.blue(); }
             const QColor cc(int(r / ledN), int(g / ledN), int(b / ledN));
-            if (driveCoolers_ && coolerDue(d.idx, packRGB(cc))) driveDevice(*sock_, d, ver_, cc);
+            if (coolerDue(d.idx, packRGB(cc))) driveDevice(*sock_, d, ver_, cc);
         } else {
             QByteArray up; put32(up, quint32(4 + 2 + 4 * d.ledN)); put16(up, quint16(d.ledN));
             for (int j = 0; j < d.ledN; ++j) {
