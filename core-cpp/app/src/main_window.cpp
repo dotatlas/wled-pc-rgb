@@ -6,6 +6,7 @@
 #include "orgb_client.h"
 #include "sysinfo.h"
 #include "ipc_client.h"
+#include "colour_ops.h"
 
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
@@ -43,21 +44,34 @@
 #include <QMessageBox>
 #include <QSignalBlocker>
 #include <QStringList>
+#include <QPainter>
+#include <QPainterPath>
+#include <QToolButton>
+#include <QRadioButton>
+#include <QButtonGroup>
+#include <QFormLayout>
+#include <QDesktopServices>
+#include <QShortcut>
+#include <QUrl>
+#include <QFontMetrics>
+#include <QHeaderView>
+#include <QPalette>
 #include <memory>
 
 namespace {
 constexpr int kDeviceIndexRole = Qt::UserRole + 1;
 constexpr int kModeIndexRole   = Qt::UserRole + 2;
+constexpr int kDeviceTypeRole  = Qt::UserRole + 3;   // OpenRGB device type (2 = GPU, 4 = cooler)
 constexpr auto kHost = "127.0.0.1";
 constexpr quint16 kPort = 6742;
 constexpr quint16 kIpcPort = 47900;
 constexpr int kDefaultZoneLeds = 8;   // MSI JARGB headers are zones of 8 (user-adjustable)
 
-// The one and only mirror colour transform: scale each channel by the single Brightness
-// slider (0-100%). Black stays black (off) since 0 * anything = 0.
-QColor scale(const QColor& c, int pct) {
-    return QColor(c.red() * pct / 100, c.green() * pct / 100, c.blue() * pct / 100);
-}
+// The mirror's colour transforms live in colour_ops.h, shared with the headless CLI.
+using colour::scale;
+using colour::stripBg;
+using colour::stripBgAll;
+using colour::gammaOut;
 
 QString findJava() {
     const QString jh = qEnvironmentVariable("JAVA_HOME");
@@ -70,6 +84,60 @@ QString findJava() {
 void paintSwatch(QLabel* l, const QColor& c) {
     l->setStyleSheet(QString("background:%1; border:1px solid #555; border-radius:3px;").arg(c.name()));
 }
+
+// A secondary-text colour taken from the palette, so grey captions stay legible on a dark theme.
+QString hintColour(const QWidget* w) {
+    return w->palette().color(QPalette::Disabled, QPalette::WindowText).name();
+}
+}
+
+// The app icon: a ring of RGB dots on a rounded dark tile, painted in code at several sizes so it
+// stays crisp in the taskbar and tray. Evokes an addressable LED ring — what the app mirrors.
+QIcon MainWindow::appIcon() {
+    QIcon icon;
+    for (int sz : { 16, 24, 32, 48, 64, 128 }) {
+        QPixmap pm(sz, sz);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const qreal r = sz * 0.14;
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0x1c, 0x1f, 0x27));                     // dark rounded tile
+        p.drawRoundedRect(QRectF(sz * 0.06, sz * 0.06, sz * 0.88, sz * 0.88), r, r);
+        const QPointF c(sz / 2.0, sz / 2.0);
+        const qreal ring = sz * 0.30, dot = qMax<qreal>(1.0, sz * 0.11);
+        const int n = 8;
+        for (int i = 0; i < n; ++i) {
+            const qreal a = (2.0 * M_PI * i) / n - M_PI / 2.0;
+            const QColor col = QColor::fromHsvF(qreal(i) / n, 0.85, 1.0);
+            p.setBrush(col);
+            p.drawEllipse(QPointF(c.x() + ring * std::cos(a), c.y() + ring * std::sin(a)), dot, dot);
+        }
+        p.end();
+        icon.addPixmap(pm);
+    }
+    return icon;
+}
+
+void MainWindow::openAbout() {
+    const QString ver = QCoreApplication::applicationVersion();
+    const QString repo = "https://github.com/dotatlas/wled-pc-rgb";
+    QMessageBox box(this);
+    box.setWindowTitle("About WLED PC RGB");
+    box.setIconPixmap(appIcon().pixmap(64, 64));
+    box.setTextFormat(Qt::RichText);
+    box.setText(
+        "<h3 style='margin-bottom:2px'>WLED PC RGB</h3>"
+        "<p style='margin-top:0;color:gray'>Version " + ver + " &nbsp;·&nbsp; MIT licence</p>"
+        "<p>Mirror a WLED strip's live colours onto your PC's RGB — fans, GPU, the NZXT Kraken "
+        "ring, mouse and motherboard.</p>"
+        "<p><a href='" + repo + "'>Project&nbsp;page</a> &nbsp;·&nbsp; "
+        "<a href='" + repo + "/blob/main/docs/USAGE.md'>User&nbsp;guide</a> &nbsp;·&nbsp; "
+        "<a href='" + repo + "/issues'>Report&nbsp;a&nbsp;bug</a></p>"
+        "<p style='color:gray;font-size:11px'>Built with Qt. Talks to OpenRGB, WLED and LedFx; "
+        "drives the NZXT Kraken over hidapi and the GPU over NVAPI. Thanks to those projects.</p>");
+    box.setStandardButtons(QMessageBox::Ok);
+    box.exec();
 }
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -88,71 +156,94 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     auto* central = new QWidget(this);
     auto* layout  = new QVBoxLayout(central);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(8);
 
-    // --- motherboard line -----------------------------------------------------
+    // --- title row: motherboard readout (demoted) + an always-visible About button ------------
     mobo_ = new QLabel("Motherboard: " + (sysinfo::motherboard().isEmpty() ? QString("(unknown)")
                                                                            : sysinfo::motherboard()), central);
-    mobo_->setStyleSheet("font-weight:600;");
+    mobo_->setStyleSheet("color:" + hintColour(central) + ";");   // a quiet caption, not a heading
+    auto* aboutBtn = new QToolButton(central);
+    aboutBtn->setText("About");
+    aboutBtn->setToolTip("Version, licence and links (F1)");
+    aboutBtn->setAutoRaise(true);
+    connect(aboutBtn, &QToolButton::clicked, this, &MainWindow::openAbout);
+    { auto* tr = new QHBoxLayout; tr->addWidget(mobo_); tr->addStretch(1); tr->addWidget(aboutBtn);
+      layout->addLayout(tr); }
+    new QShortcut(QKeySequence(Qt::Key_F1), this, [this]{ openAbout(); });
 
     // --- setup readiness group ------------------------------------------------
     auto* setup = new QGroupBox("Setup", central);
     auto* sg = new QGridLayout(setup);
 
-    auto makeDot = [&](QLabel*& dot, QLabel*& txt, const QString& label, int col) {
-        dot = new QLabel("●", setup); dot->setStyleSheet("color:#888;");
+    // Status "traffic lights": colour AND a distinct glyph per state (see setDot), so they read
+    // without relying on red/green — plus a leading caption so the row explains itself.
+    sg->addWidget(new QLabel("Status:", setup), 0, 0);
+    auto* dotsRow = new QHBoxLayout; dotsRow->setSpacing(14);
+    auto makeDot = [&](QLabel*& dot, QLabel*& txt, const QString& label) {
+        dot = new QLabel("○", setup); dot->setStyleSheet("color:#888; font-size:15px;");
         txt = new QLabel(label, setup);
         auto* cell = new QHBoxLayout; cell->setSpacing(4);
-        cell->addWidget(dot); cell->addWidget(txt); cell->addStretch(1);
-        sg->addLayout(cell, 0, col);
+        cell->addWidget(dot); cell->addWidget(txt);
+        dotsRow->addLayout(cell);
     };
-    makeDot(dotO_, dotOtxt_, "OpenRGB", 0);
-    makeDot(dotB_, dotBtxt_, "Backend", 1);
-    makeDot(dotW_, dotWtxt_, "WLED",    2);
+    makeDot(dotO_, dotOtxt_, "OpenRGB");
+    makeDot(dotB_, dotBtxt_, "Backend");
+    makeDot(dotW_, dotWtxt_, "WLED");
+    dotsRow->addStretch(1);
+    sg->addLayout(dotsRow, 0, 1, 1, 2);
 
     sg->addWidget(new QLabel("WLED host:", setup), 1, 0);
     hostEdit_ = new QLineEdit(wledHost_, setup);
     hostEdit_->setPlaceholderText("wled.local or 192.168.x.x");
-    auto* applyHost = new QPushButton("Apply", setup);
+    auto* applyHost = new QPushButton("&Apply", setup);
     { auto* hr = new QHBoxLayout; hr->addWidget(hostEdit_, 1); hr->addWidget(applyHost);
       sg->addLayout(hr, 1, 1, 1, 2); }
 
+    sg->addWidget(new QLabel("Live:", setup), 2, 0);
     swatchW_ = new QLabel(setup); swatchW_->setFixedSize(26, 16); paintSwatch(swatchW_, Qt::black);
     swatchP_ = new QLabel(setup); swatchP_->setFixedSize(26, 16); paintSwatch(swatchP_, Qt::black);
+    swatchW_->setAccessibleName("WLED strip colour"); swatchW_->setToolTip("The colour WLED is showing");
+    swatchP_->setAccessibleName("Colour sent to the PC"); swatchP_->setToolTip("The colour the PC mirrors");
     { auto* sr = new QHBoxLayout; sr->setSpacing(6);
-      sr->addWidget(new QLabel("Live:", setup));
       sr->addWidget(new QLabel("WLED", setup)); sr->addWidget(swatchW_);
       sr->addWidget(new QLabel("→  PC", setup)); sr->addWidget(swatchP_);
       sr->addStretch(1);
-      sg->addLayout(sr, 2, 0, 1, 3); }
+      sg->addLayout(sr, 2, 1, 1, 2); }
 
-    // GPU RGB is on the SMBus, which OpenRGB can only reach with admin rights. This button
-    // restarts OpenRGB elevated on demand (a confirmation surfaces the DDR5/SMBus tradeoff).
-    elevateBtn_ = new QPushButton("⛊  Elevate OpenRGB to admin (lights the GPU)", setup);
-    elevateBtn_->setToolTip("Restart OpenRGB with administrator rights so the GPU RGB lights.\n"
-                            "Admin OpenRGB also scans the motherboard SMBus (DDR5) — see the confirmation.");
-    connect(elevateBtn_, &QPushButton::clicked, this, &MainWindow::startOpenRGBElevated);
-    sg->addWidget(elevateBtn_, 3, 0, 1, 3);
-
-    // --- device tree ----------------------------------------------------------
-    status_ = new QLabel("Tick the devices to mirror, then click “Mirror WLED”.", central);
-    auto* tip = new QLabel("Each ticked device follows WLED live while mirroring is on. The app puts every "
-                           "device in Direct mode automatically. The NZXT Kraken Elite ring is driven directly. "
-                           "GPU RGB needs OpenRGB run as administrator.", central);
+    // --- device list ----------------------------------------------------------
+    status_ = new QLabel("Tick the devices to mirror, then press Mirror WLED.", central);
+    auto* tip = new QLabel("The app puts each device in Direct mode for you. Close other RGB apps "
+                           "(NZXT CAM, SignalRGB, MSI Center) first — they fight for the same devices.",
+                           central);
     tip->setWordWrap(true);
-    tip->setStyleSheet("color: gray; font-size: 11px;");
+    tip->setStyleSheet("color:" + hintColour(central) + ";");
 
-    tree_ = new QTreeWidget(central);
-    tree_->setHeaderLabels({"Mirror?  Device / Zone / Mode / LED", "Info"});
-    tree_->setColumnWidth(0, 400);
+    auto* devBox = new QGroupBox("Devices to mirror", central);
+    auto* devLay = new QVBoxLayout(devBox);
+    tree_ = new QTreeWidget(devBox);
+    tree_->setHeaderLabels({"Device", "Detail"});
+    tree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    tree_->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     connect(tree_, &QTreeWidget::itemChanged, this, [this](QTreeWidgetItem* it, int col) {
         if (building_ || col != 0 || !it->data(0, kDeviceIndexRole).isValid()) return;
         if (!(it->flags() & Qt::ItemIsUserCheckable)) return;
-        if (mirroring_) { pushIncluded(); syncKrakenDriving(); }   // opt-out; also (un)owns the ring
+        // Reconcile the bespoke pipelines FIRST, then push — syncGpuDriving() re-pushes on a change,
+        // and this order matches setMirroring() so the GPU is never briefly included while we own it.
+        if (mirroring_) { syncKrakenDriving(); syncGpuDriving(); pushIncluded(); }   // in-session opt-out
         refreshMirrorGate();
     });
     connect(tree_, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* it, int) {
         if (it && it->data(0, kModeIndexRole).isValid()) activateMode(it);   // double-click a mode row to select it
     });
+    devLay->addWidget(tree_, 1);
+    // Mode-activation lives WITH the tree it acts on (it used to be an orphan button in Advanced).
+    auto* modeHint = new QLabel("Double-click a mode row to activate it.", devBox);
+    modeHint->setStyleSheet("color:" + hintColour(central) + ";");
+    auto* setMod = new QPushButton("Set as active mode", devBox);
+    setMod->setToolTip("Activate the selected mode on its device (stop mirroring first).");
+    { auto* mr = new QHBoxLayout; mr->addWidget(modeHint); mr->addStretch(1); mr->addWidget(setMod);
+      devLay->addLayout(mr); }
 
     // --- brightness (the single control for the whole mirror) -----------------
     auto* bRow = new QHBoxLayout;
@@ -163,117 +254,200 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(bright_, &QSlider::valueChanged, this, [this, bVal](int v){
         bVal->setText(QString::number(v) + "%");
         QSettings().setValue("mirror/brightness", v);
-        paintSwatch(swatchP_, scale(wledColour_, v));
+        // Preview from the MIRRORED colour, not the raw one — otherwise dragging the slider makes a
+        // removed background flash back into the PC swatch. Same strip -> scale -> gamma order.
+        const QColor prev = scale(mirrorColour_, v);
+        paintSwatch(swatchP_, (gammaChk_ && gammaChk_->isChecked()) ? gammaOut(prev) : prev);
     });
     bRow->addWidget(new QLabel("Brightness:", central));
     bRow->addWidget(bright_, 1);
     bRow->addWidget(bVal);
 
     // Paint the PC preview once now (slider built setValue-before-connect).
-    paintSwatch(swatchP_, scale(wledColour_, bright_->value()));
+    paintSwatch(swatchP_, scale(mirrorColour_, bright_->value()));
 
-    // --- primary mirror button ------------------------------------------------
-    mirBtn_ = new QPushButton("▶  Mirror WLED", central);
+    // --- primary mirror button (the one prominent action) --------------------
+    mirBtn_ = new QPushButton("▶  &Mirror WLED", central);
     mirBtn_->setCheckable(true);
-    mirBtn_->setMinimumHeight(38);
+    mirBtn_->setMinimumHeight(qMax(38, mirBtn_->fontMetrics().height() * 2));
     mirBtn_->setStyleSheet("QPushButton{font-weight:700;font-size:14px;}"
                            "QPushButton:checked{background:#2a8f5a;color:white;}");
+    mirBtn_->setDefault(true);
     connect(mirBtn_, &QPushButton::toggled, this, &MainWindow::setMirroring);
 
-    // --- advanced group -------------------------------------------------------
+    // --- advanced group (collapsed by default) --------------------------------
+    // Everything lives in ONE container widget (advBody) so the whole section shows/hides in a
+    // single line — the old design kept a parallel setVisible() list that every new control had to
+    // be added to, and a control forgotten there would leak into the collapsed state.
     auto* adv = new QGroupBox("Advanced", central);
     adv->setCheckable(true);
     adv->setChecked(false);
-    auto* av = new QVBoxLayout(adv);
-    auto* ag = new QHBoxLayout;
-    auto* bl = new QHBoxLayout;
-    auto* rescan = new QPushButton("Rescan", adv);
-    auto* maxZ   = new QPushButton("Size zones", adv);
-    zoneSpin_ = new QSpinBox(adv);
-    zoneSpin_->setRange(1, 512);
-    zoneSpin_->setValue(s.value("mirror/zoneLeds", kDefaultZoneLeds).toInt());
-    zoneSpin_->setToolTip("LEDs per motherboard ARGB zone (e.g. 8 for an MSI JARGB header). "
-                          "Set the number, then click Size zones.");
-    connect(zoneSpin_, &QSpinBox::valueChanged, this, [](int v){ QSettings().setValue("mirror/zoneLeds", v); });
-    auto* setMod = new QPushButton("Set selected mode", adv);
-    spreadChk_   = new QCheckBox("Spread (whole strip per device)", adv);
-    spread_ = s.value("mirror/spread", false).toBool();
-    spreadChk_->setChecked(spread_);
-    spreadChk_->setToolTip("Each device stretches the ENTIRE WLED strip across its own LEDs.");
-    wrapChk_     = new QCheckBox("Wrap (strip across all devices)", adv);
-    wrap_ = s.value("mirror/wrap", false).toBool();
-    wrapChk_->setChecked(wrap_);
-    wrapChk_->setToolTip("Distribute the WLED strip ONCE across all ticked devices in sequence, "
-                         "so the colour flows from one device to the next.");
-    ag->addWidget(rescan); ag->addWidget(maxZ); ag->addWidget(zoneSpin_); ag->addWidget(setMod);
-    ag->addWidget(spreadChk_); ag->addWidget(wrapChk_); ag->addStretch(1);
+    auto* advOuter = new QVBoxLayout(adv);
+    auto* advBody  = new QWidget(adv);
+    auto* av = new QVBoxLayout(advBody);
+    av->setContentsMargins(0, 0, 0, 0);
+    advOuter->addWidget(advBody);
+    connect(adv, &QGroupBox::toggled, advBody, &QWidget::setVisible);
+    advBody->setVisible(false);
 
-    // Blacklist row: devices hidden from the scan (a bespoke driver owns them), with a way
-    // to re-add one so OpenRGB handles it instead. Session only (resets on restart).
-    auto* blLabel = new QLabel("Hidden (driven directly):", adv);
-    blacklistCombo_ = new QComboBox(adv);
-    blacklistCombo_->setMinimumWidth(220);
-    auto* readd = new QPushButton("Re-add to scan", adv);
-    readd->setToolTip("Show this device in the list again and let OpenRGB drive it (applies on the next Mirror start).");
-    repopulateBlacklist();
-    connect(readd, &QPushButton::clicked, this, [this]{
-        if (!blacklistCombo_ || blacklistCombo_->count() == 0) return;
-        const QString sel = blacklistCombo_->currentText();
-        blacklist_.removeAll(sel);
+    // Row: Zones + Kraken ring, side by side (both compact).
+    {
+        auto* row = new QHBoxLayout;
+        auto* zonesBox = new QGroupBox("Zones", advBody);
+        auto* zf = new QFormLayout(zonesBox);
+        zoneSpin_ = new QSpinBox(zonesBox);
+        zoneSpin_->setRange(1, 512);
+        zoneSpin_->setValue(s.value("mirror/zoneLeds", kDefaultZoneLeds).toInt());
+        zoneSpin_->setToolTip("LEDs per motherboard ARGB header (e.g. 8 for an MSI JARGB fan).\n"
+                              "Set the number, then press Size zones.");
+        connect(zoneSpin_, &QSpinBox::valueChanged, this, [](int v){ QSettings().setValue("mirror/zoneLeds", v); });
+        auto* maxZ   = new QPushButton("Size zones", zonesBox);
+        auto* rescan = new QPushButton("&Rescan devices", zonesBox);
+        connect(maxZ,   &QPushButton::clicked, this, &MainWindow::maxZones);
+        connect(rescan, &QPushButton::clicked, this, &MainWindow::refresh);
+        zf->addRow("Zone size (LEDs):", zoneSpin_);
+        { auto* zb = new QHBoxLayout; zb->addWidget(maxZ); zb->addWidget(rescan); zb->addStretch(1);
+          zf->addRow(QString(), zb); }
+
+        auto* ringBox = new QGroupBox("Kraken ring", advBody);
+        auto* rf = new QFormLayout(ringBox);
+        originSpin_ = new QSpinBox(ringBox);
+        originSpin_->setRange(1, KrakenDriver::maxOrigins());
+        originSpin_->setValue(s.value("mirror/ringOrigins", 2).toInt());
+        originSpin_->setToolTip("How many points the ring grows the pattern out from, spaced evenly around\n"
+                                "the circle. 1 = one bloom across 12 LEDs; 2 (default) = two opposite blooms\n"
+                                "of 6 LEDs that meet halfway. More = smaller, faster blooms (fewer shades).");
+        kraken_.setOrigins(originSpin_->value());
+        connect(originSpin_, &QSpinBox::valueChanged, this, [this](int v){
+            QSettings().setValue("mirror/ringOrigins", v); kraken_.setOrigins(v);
+        });
+        rf->addRow("Ring origins:", originSpin_);
+
+        row->addWidget(zonesBox); row->addWidget(ringBox); row->addStretch(0);
+        av->addLayout(row);
+    }
+
+    // Colour mapping — a 3-way radio, so the exclusivity is enforced by the widget and the default
+    // "same colour everywhere" state is visible, instead of two checkboxes that manually un-tick
+    // each other with the default hidden behind "neither ticked".
+    {
+        spread_ = s.value("mirror/spread", false).toBool();
+        wrap_   = s.value("mirror/wrap", false).toBool();
+        auto* mapBox = new QGroupBox("Colour mapping", advBody);
+        auto* mv = new QVBoxLayout(mapBox);
+        mapSame_   = new QRadioButton("Same colour on every device", mapBox);
+        mapSpread_ = new QRadioButton("Spread — the whole strip on each device", mapBox);
+        mapWrap_   = new QRadioButton("Wrap — the strip across all devices in turn", mapBox);
+        mapSpread_->setToolTip("Each device stretches the ENTIRE WLED strip across its own LEDs.");
+        mapWrap_->setToolTip("Lay the WLED strip once across all ticked devices in sequence, so the\n"
+                             "colour flows from one device to the next.");
+        auto* grp = new QButtonGroup(this);
+        grp->addButton(mapSame_); grp->addButton(mapSpread_); grp->addButton(mapWrap_);
+        (wrap_ ? mapWrap_ : spread_ ? mapSpread_ : mapSame_)->setChecked(true);
+        auto applyMap = [this]{
+            spread_ = mapSpread_->isChecked(); wrap_ = mapWrap_->isChecked();
+            QSettings().setValue("mirror/spread", spread_);
+            QSettings().setValue("mirror/wrap", wrap_);
+        };
+        connect(mapSame_,   &QRadioButton::toggled, this, [applyMap]{ applyMap(); });
+        connect(mapSpread_, &QRadioButton::toggled, this, [applyMap]{ applyMap(); });
+        connect(mapWrap_,   &QRadioButton::toggled, this, [applyMap]{ applyMap(); });
+        mv->addWidget(mapSame_); mv->addWidget(mapSpread_); mv->addWidget(mapWrap_);
+
+        gammaChk_ = new QCheckBox("Match strip gamma (recommended)", mapBox);
+        gammaChk_->setChecked(s.value("mirror/gamma", true).toBool());
+        gammaChk_->setToolTip("Send the colours through the same gamma curve WLED uses for the strip.\n"
+                              "Without it the PC is brighter than the strip at low levels, and very dark\n"
+                              "colours the strip shows as black can still glow on the PC. This darkens the\n"
+                              "whole mirror — raise Brightness to suit.");
+        connect(gammaChk_, &QCheckBox::toggled, this, [](bool on){ QSettings().setValue("mirror/gamma", on); });
+        mv->addWidget(gammaChk_);
+        av->addWidget(mapBox);
+    }
+
+    // Music-reactive only (background calibration).
+    {
+        bgCal_ = QColor(s.value("mirror/bgCal").toString());     // invalid == never calibrated
+        auto* reBox = new QGroupBox("Music-reactive only", advBody);
+        auto* rv = new QVBoxLayout(reBox);
+        stripBgChk_ = new QCheckBox("Remove the background colour", reBox);
+        stripBgChk_->setChecked(s.value("mirror/stripBg", false).toBool());
+        stripBgChk_->setToolTip("Subtract the always-on background colour, so only the music-reactive part\n"
+                                "lights the PC. Stop the music first, then tick this box.");
+        calBtn_ = new QPushButton("Set from now", reBox);
+        calBtn_->setToolTip("Store the colour WLED shows right now as the background.\n"
+                            "Do this with the music stopped.");
+        bgSwatch_ = new QLabel(reBox); bgSwatch_->setFixedSize(26, 16);
+        paintSwatch(bgSwatch_, bgCal_.isValid() ? bgCal_ : QColor(Qt::black));
+        bgLabel_  = new QLabel(reBox);
+        connect(calBtn_, &QPushButton::clicked, this, &MainWindow::calibrateBg);
+        connect(stripBgChk_, &QCheckBox::toggled, this, [this](bool on){
+            QSettings().setValue("mirror/stripBg", on);
+            // Ticking the box IS the first calibration; after that the stored value is reused.
+            if (on && !bgCal_.isValid()) calibrateBg(); else refreshBgUi();
+        });
+        { auto* hb = new QHBoxLayout; hb->addWidget(stripBgChk_);
+          hb->addSpacing(10); hb->addWidget(new QLabel("Background:", reBox));
+          hb->addWidget(bgSwatch_); hb->addWidget(bgLabel_); hb->addWidget(calBtn_); hb->addStretch(1);
+          rv->addLayout(hb); }
+        auto* calHint = new QLabel("Stop the music so the strip shows just the background, then tick the box "
+                                   "(or press “Set from now”). The app measures for about a second and subtracts "
+                                   "that colour, so only the reactive part reaches the PC.", reBox);
+        calHint->setWordWrap(true);
+        calHint->setStyleSheet("color:" + hintColour(central) + ";");
+        rv->addWidget(calHint);
+        av->addWidget(reBox);
+    }
+
+    // Hidden devices — a bespoke driver owns them, so OpenRGB doesn't; re-add hands one back to
+    // OpenRGB. Session only (resets on restart).
+    {
+        auto* hidBox = new QGroupBox("Hidden devices", advBody);
+        auto* hf = new QHBoxLayout(hidBox);
+        blacklistCombo_ = new QComboBox(hidBox);
+        blacklistCombo_->setMinimumWidth(200);
+        auto* readd = new QPushButton("Re-add to scan", hidBox);
+        readd->setToolTip("Show this device in the list again and let OpenRGB drive it (on the next Mirror start).");
         repopulateBlacklist();
-        refresh();
-        status_->setText("Re-added \"" + sel + "\" to the scan — start Mirror again for OpenRGB to drive it.");
-    });
-    bl->addWidget(blLabel); bl->addWidget(blacklistCombo_, 1); bl->addWidget(readd); bl->addStretch(1);
-
-    av->addLayout(ag);
-    av->addLayout(bl);
-
-    connect(adv, &QGroupBox::toggled, this, [rescan, maxZ, setMod, readd, blLabel, this](bool on){
-        rescan->setVisible(on); maxZ->setVisible(on); zoneSpin_->setVisible(on); setMod->setVisible(on);
-        spreadChk_->setVisible(on); wrapChk_->setVisible(on);
-        blLabel->setVisible(on); blacklistCombo_->setVisible(on); readd->setVisible(on);
-    });
-    rescan->setVisible(false); maxZ->setVisible(false); zoneSpin_->setVisible(false); setMod->setVisible(false);
-    spreadChk_->setVisible(false); wrapChk_->setVisible(false);
-    blLabel->setVisible(false); blacklistCombo_->setVisible(false); readd->setVisible(false);
+        connect(readd, &QPushButton::clicked, this, [this]{
+            if (!blacklistCombo_ || blacklistCombo_->count() == 0) return;
+            const QString sel = blacklistCombo_->currentText();
+            blacklist_.removeAll(sel);
+            repopulateBlacklist();
+            refresh();
+            status_->setText("Re-added \"" + sel + "\" to the scan — start Mirror again for OpenRGB to drive it.");
+        });
+        hf->addWidget(new QLabel("Driven directly (not OpenRGB):", hidBox));
+        hf->addWidget(blacklistCombo_, 1); hf->addWidget(readd);
+        av->addWidget(hidBox);
+    }
 
     // --- options group --------------------------------------------------------
     auto* opts = new QGroupBox("Options", central);
-    auto* og = new QHBoxLayout(opts);
+    auto* og = new QVBoxLayout(opts);
     autoMirrorChk_ = new QCheckBox("Auto-mirror on launch", opts);
     autostartChk_  = new QCheckBox("Launch at login", opts);
     startMinChk_   = new QCheckBox("Start minimised to tray", opts);
     autoMirrorChk_->setChecked(s.value("opts/autoMirror", false).toBool());
     autostartChk_->setChecked(s.value("opts/autostart", false).toBool());
     startMinChk_->setChecked(s.value("opts/startMin", false).toBool());
-    og->addWidget(autoMirrorChk_); og->addWidget(autostartChk_); og->addWidget(startMinChk_); og->addStretch(1);
+    og->addWidget(autoMirrorChk_); og->addWidget(autostartChk_); og->addWidget(startMinChk_);
 
     // --- assemble -------------------------------------------------------------
-    layout->addWidget(mobo_);
     layout->addWidget(setup);
     layout->addWidget(status_);
     layout->addWidget(tip);
-    layout->addWidget(new QLabel("Devices to mirror:", central));
-    layout->addWidget(tree_, 1);
+    layout->addWidget(devBox, 1);
     layout->addLayout(bRow);
+    layout->addSpacing(6);
     layout->addWidget(mirBtn_);
     layout->addWidget(adv);
     layout->addWidget(opts);
     setCentralWidget(central);
 
     // --- signals --------------------------------------------------------------
-    connect(rescan, &QPushButton::clicked, this, &MainWindow::refresh);
-    connect(maxZ,   &QPushButton::clicked, this, &MainWindow::maxZones);
+    // (Rescan / Size zones / colour-mapping radios / gamma are wired at creation, in Advanced.)
     connect(setMod, &QPushButton::clicked, this, &MainWindow::setSelectedMode);
-    connect(spreadChk_, &QCheckBox::toggled, this, [this](bool on){
-        spread_ = on; QSettings().setValue("mirror/spread", on);
-        if (on && wrapChk_->isChecked()) wrapChk_->setChecked(false);   // spread & wrap are mutually exclusive
-    });
-    connect(wrapChk_, &QCheckBox::toggled, this, [this](bool on){
-        wrap_ = on; QSettings().setValue("mirror/wrap", on);
-        if (on && spreadChk_->isChecked()) spreadChk_->setChecked(false);
-    });
     connect(applyHost, &QPushButton::clicked, this, &MainWindow::connectHostFromField);
     connect(hostEdit_, &QLineEdit::returnPressed, this, &MainWindow::connectHostFromField);
     connect(autoMirrorChk_, &QCheckBox::toggled, this, [](bool on){ QSettings().setValue("opts/autoMirror", on); });
@@ -282,14 +456,21 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     // --- tray -----------------------------------------------------------------
     tray_ = new QSystemTrayIcon(this);
-    tray_->setIcon(QApplication::style()->standardIcon(QStyle::SP_ComputerIcon));
+    tray_->setIcon(appIcon());
     tray_->setToolTip(baseTitle_);
     auto* trayMenu = new QMenu(this);
-    connect(trayMenu->addAction("Show wled-pc-rgb"), &QAction::triggered, this, &MainWindow::showAndRaise);
+    connect(trayMenu->addAction("Show WLED PC RGB"), &QAction::triggered, this, &MainWindow::showAndRaise);
     trayMirror_ = trayMenu->addAction("Mirror WLED");
     trayMirror_->setCheckable(true);
     connect(trayMirror_, &QAction::toggled, this, &MainWindow::setMirroring);
     connect(trayMenu->addAction("Rescan devices"), &QAction::triggered, this, &MainWindow::refresh);
+    trayMenu->addSeparator();
+    const QString repo = "https://github.com/dotatlas/wled-pc-rgb";
+    connect(trayMenu->addAction("Documentation…"), &QAction::triggered, this,
+            [repo]{ QDesktopServices::openUrl(QUrl(repo + "/blob/main/docs/USAGE.md")); });
+    connect(trayMenu->addAction("Report a bug…"), &QAction::triggered, this,
+            [repo]{ QDesktopServices::openUrl(QUrl(repo + "/issues")); });
+    connect(trayMenu->addAction("About WLED PC RGB…"), &QAction::triggered, this, &MainWindow::openAbout);
     trayMenu->addSeparator();
     connect(trayMenu->addAction("Quit"), &QAction::triggered, qApp, &QApplication::quit);
     tray_->setContextMenu(trayMenu);
@@ -323,25 +504,51 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                                      : "WLED unreachable at " + wledHost_);
     });
     connect(ipc_, &IpcClient::frame, this, [this](const QColor& avg, const QList<QColor>& cols) {
-        wledColour_ = avg;
+        wledColour_ = avg;                                 // always the RAW strip colour
+
+        // A calibration in progress accumulates the per-channel maximum over the window.
+        if (calibrating_) {
+            calMax_ = QColor(qMax(calMax_.red(),   avg.red()),
+                             qMax(calMax_.green(), avg.green()),
+                             qMax(calMax_.blue(),  avg.blue()));
+            ++calFrames_;
+            if (calTimer_.elapsed() >= 1000 && calFrames_ >= 3) finishCalibration();
+        }
+
         const int b = bright_->value();
         const bool off = !wledOn_;                         // WLED powered off → PC off
-        const QColor pc = off ? QColor(0, 0, 0) : scale(avg, b);
+        const bool strip = stripBgChk_ && stripBgChk_->isChecked() && bgCal_.isValid();
+        const bool gam = gammaChk_ && gammaChk_->isChecked();
+
+        // "Reactive only": subtract the calibrated background from every bucket. Done here, once, so
+        // all four pipelines below (Kraken, GPU, OpenRGB positional, OpenRGB solid) inherit it.
+        QList<QColor> use = cols;
+        QColor useAvg = avg;
+        if (strip && !cols.isEmpty()) useAvg = stripBgAll(cols, bgCal_, &use);
+        mirrorColour_ = useAvg;                            // what the PC mirrors (pre-brightness)
+        // Output order is strip -> scale -> gamma, exactly WLED's own order. Gamma must be LAST: it is
+        // non-linear, so applying it before the subtraction would break the additive arithmetic.
+        const QColor pc = off ? QColor(0, 0, 0)
+                              : (gam ? gammaOut(scale(useAvg, b)) : scale(useAvg, b));
 
         // Cosmetics (swatches + title) don't need the full frame rate — throttle to ~10 Hz
         // so the GUI doesn't churn while devices update every frame.
         static QElapsedTimer cos;
         if (!cos.isValid() || cos.elapsed() > 100) {
             cos.restart();
-            paintSwatch(swatchW_, off ? QColor(0, 0, 0) : avg);
-            paintSwatch(swatchP_, pc);
-            setWindowTitle(baseTitle_ + " · WLED " + avg.name());
+            paintSwatch(swatchW_, off ? QColor(0, 0, 0) : avg);   // WLED as-is …
+            paintSwatch(swatchP_, pc);                            // … next to what the PC shows
+            setWindowTitle(baseTitle_ + " · WLED " + avg.name()
+                           + (strip ? "  −  bg " + bgCal_.name() : QString()));
         }
         if (!mirroring_) return;
 
         // Scaled per-LED strip, built once per frame and shared by every pipeline below.
         QList<QColor> sc;
-        if (!off) { sc.reserve(cols.size()); for (const QColor& c : cols) sc.push_back(scale(c, b)); }
+        if (!off) {
+            sc.reserve(use.size());
+            for (const QColor& c : use) sc.push_back(gam ? gammaOut(scale(c, b)) : scale(c, b));
+        }
 
         // --- Kraken pipeline (direct HID) -------------------------------------
         // Its own device-specific path, independent of the OpenRGB socket: always per-LED so
@@ -357,10 +564,34 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             }
         }
 
+        // --- GPU pipeline (direct NVAPI I2C) ----------------------------------
+        // Also its own path: per-LED across the logo + fan strips, self-healing (a reopen
+        // re-enumerates the GPU handle, which is the fix for NVIDIA's stale-handle bug).
+        if (gpuDriving_) {
+            static QElapsedTimer gReopen;
+            if (!gpu_.isOpen() && (!gReopen.isValid() || gReopen.elapsed() > 2000)) {
+                gReopen.restart();
+                if (!gpu_.open() && gpu_.isLatched()) {
+                    // The driver has given up for this session. Release ownership so OpenRGB gets
+                    // the card back — otherwise it would be driven by nothing (the v1.3 failure).
+                    gpuDriving_ = false;
+                    pushIncluded();
+                    status_->setText("GPU direct control stopped after repeated errors — OpenRGB has it again.");
+                }
+            }
+            if (gpuDriving_ && gpu_.isOpen()) {
+                if (off || sc.isEmpty()) gpu_.setColor(QColor(0, 0, 0));
+                else                     gpu_.setLeds(sc);
+            }
+        }
+
         // --- OpenRGB pipeline (fans, GPU, mouse, motherboard) -----------------
         static QElapsedTimer reopen;                       // self-heal the mirror socket
         if (!mirror_.alive() && (!reopen.isValid() || reopen.elapsed() > 2000)) {
             reopen.restart(); QString e;
+            // Restate ownership first: close() cleared it, and open() consults it to decide which
+            // devices to leave alone. Without this the reopen would mode-switch a card we own.
+            mirror_.setOwnedExternally(gpuDriving_ ? allGpuRowIndices() : QList<int>{});
             if (mirror_.open(kHost, kPort, &e)) pushIncluded();
         }
         if (!mirror_.alive()) return;
@@ -375,6 +606,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
     ipc_->start(kIpcPort);
 
+    refreshBgUi();
     refreshMirrorGate();
 }
 
@@ -383,7 +615,7 @@ void MainWindow::closeEvent(QCloseEvent* e) {
     if (tray_ && tray_->isVisible()) {
         static bool told = false;
         hide();
-        if (!told) { tray_->showMessage("wled-pc-rgb", "Still running in the tray — right-click to quit.",
+        if (!told) { tray_->showMessage("WLED PC RGB", "Still running in the tray — right-click to quit.",
                                         QSystemTrayIcon::Information, 3000); told = true; }
         e->ignore();
     } else {
@@ -406,15 +638,31 @@ void MainWindow::setMirroring(bool on) {
         QStringList skip = blacklist_;
         if (!skip.contains("kraken", Qt::CaseInsensitive)) skip << "kraken";
         mirror_.setSkip(skip);
+        // State ownership explicitly BEFORE open() reads it. gpu_ is not open yet at this point, so
+        // nothing is owned — never inherit a previous session's value, or open() would skip the
+        // mode-switch for whatever device now holds that index (indices shift between scans).
+        mirror_.setOwnedExternally(gpuDriving_ ? allGpuRowIndices() : QList<int>{});
         QString e;
         if (!mirror_.open(kHost, kPort, &e)) { status_->setText("⚠  " + e); on = false; }
         else {
-            mirroring_ = true; pushIncluded();
+            mirroring_ = true;
             syncKrakenDriving();            // start the ring pipeline if the Kraken row is ticked
+            // The GPU pipeline opens AFTER OpenRGB, so OpenRGB's one-time Direct-mode switch cannot
+            // land on top of our per-LED enable. syncGpuDriving() re-pushes the included set itself,
+            // which is what actually stops OpenRGB driving the card.
+            syncGpuDriving();
+            pushIncluded();                 // (also covers the case where the GPU did not open)
         }
     } else if (!on && mirroring_) {
+        // Release the bespoke pipelines while mirroring_ is still true, so syncGpuDriving()'s
+        // re-push actually runs (it is gated on mirroring_) and ownership is cleared in order —
+        // handing each device back and re-asserting its mode BEFORE the socket goes away.
+        const bool wasKraken = krakenDriving_, wasGpu = gpuDriving_;
+        krakenDriving_ = false; gpuDriving_ = false;
+        if (wasKraken) { kraken_.setRingColor(QColor(0, 0, 0)); kraken_.close(); }
+        if (wasGpu)    { gpu_.blackout(); gpu_.close(); }
+        pushIncluded();                    // clears ownership + re-asserts the released modes
         mirroring_ = false;
-        syncKrakenDriving();               // stops + blacks the ring, releases the HID handle
         mirror_.close(); status_->setText("Mirror off.");
     }
     QSignalBlocker b1(mirBtn_), b2(trayMirror_);
@@ -477,100 +725,15 @@ void MainWindow::startOpenRGB() {
         status_->setText("OpenRGB not found — install it, or start it manually with --server.");
         return;
     }
-    // NON-elevated on purpose: elevated OpenRGB probes the motherboard SMBus (DDR5), which
-    // risks the RAM and hangs detection on this board. Non-elevated is safe + reliable.
-    // (Trade-off: the GPU is detected but its RGB won't physically light without elevation.)
+    // ALWAYS non-elevated: elevated OpenRGB probes the motherboard SMBus (DDR5), which risks the
+    // RAM. Nothing needs elevation any more — the GPU has its own NVAPI pipeline (GpuDriver), which
+    // uses the GPU's own I2C bus and no admin rights, so the old "Elevate OpenRGB" button is gone.
     QProcess::startDetached(exe, QStringList{ "--server", "--noautoconnect" });
     setDot(dotO_, 2, "Starting OpenRGB…");
     // USB-HID devices (Kraken, mouse) enumerate a few seconds after OpenRGB starts;
     // the initial scan can miss them. Re-scan a couple of times to catch late arrivals.
     QTimer::singleShot(6000,  this, &MainWindow::refresh);
     QTimer::singleShot(13000, this, &MainWindow::refresh);
-}
-
-// Is an OpenRGB.exe process running right now? A point-in-time fact (not a port probe), so it
-// can't confuse "elevated instance still slowly binding the SMBus" with "elevated instance died":
-// a binding instance is still a running process. tasklist can enumerate a higher-integrity
-// process from our medium-integrity app. tasklist normally returns in well under 300 ms; we cap
-// the wait at 1 s so a rare hang can't freeze the GUI, and on any timeout/failure assume running
-// — the fail-safe answer, since it only ever makes us DECLINE to launch another instance.
-static bool openRgbProcessRunning() {
-    QProcess p;
-    p.start("tasklist", { "/FI", "IMAGENAME eq OpenRGB.exe", "/NH" });
-    if (!p.waitForFinished(1000)) { p.kill(); p.waitForFinished(200); return true; }
-    return QString::fromLocal8Bit(p.readAllStandardOutput()).contains("OpenRGB.exe", Qt::CaseInsensitive);
-}
-
-// Restart OpenRGB elevated so it can reach the SMBus (the only way the GPU RGB lights). This
-// is the one place we cross the non-elevated default, so it is gated behind an explicit
-// confirmation that names the DDR5/SMBus tradeoff — the user's call, made knowingly.
-void MainWindow::startOpenRGBElevated() {
-    // Re-entry guards are all synchronous and evaluated at click time — deliberately NOT driven by
-    // timers or refresh() state, which would race the (unbounded) UAC prompt and the SMBus bind.
-    if (elevating_) return;               // an attempt is already in flight — ignore the click
-    const QString exe = findOpenRGB();
-    if (exe.isEmpty()) {
-        QMessageBox::warning(this, "OpenRGB not found",
-            "Could not find OpenRGB.exe. Install OpenRGB, then try again.");
-        return;
-    }
-    // If we already elevated, don't kill+relaunch while that instance still exists: a
-    // medium-integrity taskkill can't stop a higher-integrity process, so a second elevated launch
-    // would just collide on port 6742. Decide by whether OpenRGB.exe is actually running (reliable
-    // across integrity levels), NOT by port reachability — a slow SMBus bind must not read as dead.
-    if (openrgbElevated_) {
-        if (openRgbProcessRunning()) {
-            QMessageBox::information(this, "OpenRGB already elevated",
-                "OpenRGB is already running as administrator. If the GPU is not lit yet, give its "
-                "device detection a few seconds.");
-            return;
-        }
-        openrgbElevated_ = false;         // no OpenRGB.exe running — the elevated instance is gone
-    }
-    const auto r = QMessageBox::warning(this, "Elevate OpenRGB to administrator",
-        "This restarts OpenRGB with administrator rights so the GPU RGB lights.\n\n"
-        "Administrator OpenRGB also scans the motherboard SMBus, which includes your DDR5 RAM. "
-        "This app never writes to your RAM, but the SMBus scan itself carries a small risk on "
-        "some memory kits. Only continue if you accept that.\n\nRestart OpenRGB as administrator?",
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-    if (r != QMessageBox::Yes) return;
-
-    elevating_ = true;                              // in-flight: block a second attempt until we settle
-    if (mirroring_) setMirroring(false);            // drop our socket before OpenRGB restarts
-    QProcess::startDetached("taskkill", { "/IM", "OpenRGB.exe", "/F", "/T" });   // stop the non-elevated instance
-    setDot(dotO_, 2, "Restarting OpenRGB as administrator…");
-    status_->setText("Restarting OpenRGB as administrator — accept the Windows UAC prompt.");
-
-    // Run the elevated launch through a TRACKED powershell process so its EXIT CODE reports the UAC
-    // outcome deterministically (0 = accepted+launched, 1 = declined/failed). Start-Process returns
-    // as soon as the process is created (right after UAC), independent of how long the SMBus bind
-    // then takes — so this never races a slow accept or a slow bind.
-    const QString psCmd = QString(
-        "try { Start-Process -FilePath '%1' -ArgumentList '--server','--noautoconnect' -Verb RunAs -ErrorAction Stop; exit 0 } catch { exit 1 }")
-        .arg(QDir::toNativeSeparators(exe));
-    auto* ps = new QProcess(this);
-    ps->setProgram("powershell");
-    ps->setArguments({ "-NoProfile", "-WindowStyle", "Hidden", "-Command", psCmd });
-    auto handled = std::make_shared<bool>(false);
-    auto settle = [this, ps, handled](bool launched) {
-        if (*handled) return;
-        *handled = true;
-        ps->deleteLater();
-        elevating_ = false;
-        if (launched) {
-            openrgbElevated_ = true;                          // accepted — an elevated instance is (coming) up
-            status_->setText("OpenRGB restarting as administrator — reconnecting…");
-            QTimer::singleShot(2000, this, &MainWindow::refresh);   // refresh self-retries every ~2s until it binds
-        } else {
-            status_->setText("Elevation cancelled — OpenRGB restarted normally (the GPU stays dark).");
-            startOpenRGB();                                   // decline/fail — restore a non-elevated instance
-        }
-    };
-    connect(ps, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [settle](int code, QProcess::ExitStatus) { settle(code == 0); });
-    connect(ps, &QProcess::errorOccurred, this,
-            [settle](QProcess::ProcessError e) { if (e == QProcess::FailedToStart) settle(false); });
-    QTimer::singleShot(1200, this, [ps]{ ps->start(); });   // let the kill land, then prompt for UAC
 }
 
 // Is the Kraken present in the list AND ticked? If so we drive its ring over HID; if not
@@ -598,6 +761,55 @@ void MainWindow::syncKrakenDriving() {
     }
 }
 
+// Device indices of EVERY ticked GPU row (OpenRGB type 2). Matched by device type, not by name, so
+// it holds for any vendor. We return them all because our driver binds a card by PCI id, which
+// cannot be correlated with an OpenRGB row: on a two-GPU machine, guessing wrong would leave
+// OpenRGB driving the very card we stream to (two writers on one I2C bus). Releasing every ticked
+// GPU row instead means the worst case is one GPU unlit, never a write conflict.
+QList<int> MainWindow::gpuRowIndices() const {
+    QList<int> out;
+    for (int i = 0; i < tree_->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* it = tree_->topLevelItem(i);
+        const QVariant v = it->data(0, kDeviceIndexRole);
+        if (!v.isValid()) continue;
+        if (it->data(0, kDeviceTypeRole).toInt() != 2) continue;
+        if ((it->flags() & Qt::ItemIsUserCheckable) && it->checkState(0) == Qt::Checked) out << v.toInt();
+    }
+    return out;
+}
+
+// Every GPU row, ticked or not. Used for the "owned" set: our driver binds a card by PCI id, which
+// can't be mapped to a row, so an UNTICKED GPU row could still be the card we stream to — and
+// OpenRGB must not mode-switch it. Unticked rows are excluded from included_ anyway, so marking
+// them owned costs nothing.
+QList<int> MainWindow::allGpuRowIndices() const {
+    QList<int> out;
+    for (int i = 0; i < tree_->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* it = tree_->topLevelItem(i);
+        const QVariant v = it->data(0, kDeviceIndexRole);
+        if (!v.isValid()) continue;
+        if (it->data(0, kDeviceTypeRole).toInt() == 2) out << v.toInt();
+    }
+    return out;
+}
+
+// Open/close the GPU NVAPI pipeline to match gpuSelected() while mirroring. Idempotent. Whenever
+// ownership changes it re-pushes the included set, so OpenRGB stops/starts driving the card in the
+// same breath — ownership is re-evaluated live rather than fixed at mirror start (which is what let
+// both writers hold the card at once).
+void MainWindow::syncGpuDriving() {
+    const bool want = mirroring_ && gpuSelected();
+    const bool was = gpuDriving_;
+    if (want && !gpuDriving_) {
+        gpuDriving_ = gpu_.open();                // false if this GPU isn't one we support
+    } else if (!want && gpuDriving_) {
+        gpu_.blackout();                          // really darken it (bypasses the rate cap) …
+        gpu_.close();                             // … then release, so MSI Center/SignalRGB can take it
+        gpuDriving_ = false;
+    }
+    if (gpuDriving_ != was && mirroring_) pushIncluded();   // hand the device over / back immediately
+}
+
 QList<int> MainWindow::gatherChecked() {
     QList<int> out;
     for (int i = 0; i < tree_->topLevelItemCount(); ++i) {
@@ -609,6 +821,62 @@ QList<int> MainWindow::gatherChecked() {
     return out;
 }
 
+// Start a calibration: confirm that the music is stopped, then measure for about a second.
+//
+// Two things this deliberately does NOT do. It does not capture silently — storing a reference while
+// music is playing bakes the reactive layer into the background and the user would never be told. And
+// it does not trust a single frame: one frame carries the full per-frame noise and lands below the
+// true pedestal about half the time, which the one-sided clamp then turns into a permanent floor.
+// It also does not require WLED to be reachable: a DDP or E1.31 source streams without it.
+void MainWindow::calibrateBg() {
+    if (calibrating_) return;
+    const auto r = QMessageBox::information(this, "Set the background colour",
+        "Stop the music first, so the strip shows only the background colour.\n\n"
+        "When you click OK the app measures for about one second, and stores what it sees as the "
+        "background. Then start the music again.",
+        QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Ok);
+    if (r != QMessageBox::Ok) { refreshBgUi(); return; }
+
+    calibrating_ = true; calFrames_ = 0; calMax_ = QColor(0, 0, 0);
+    calTimer_.restart();
+    if (calBtn_) { calBtn_->setEnabled(false); calBtn_->setText("Measuring…"); }
+    status_->setText("Reactive only: measuring the background colour — hold still…");
+    // Give up if no frames arrive at all, rather than appearing to hang.
+    QTimer::singleShot(4000, this, [this]{
+        if (!calibrating_) return;
+        if (calFrames_ == 0) {
+            calibrating_ = false;
+            if (calBtn_) calBtn_->setText("Set from now");
+            refreshBgUi();
+            status_->setText("Reactive only: no WLED data arrived — check the WLED dot, then try again.");
+        } else {
+            finishCalibration();       // fewer frames than hoped, but enough to use
+        }
+    });
+}
+
+void MainWindow::finishCalibration() {
+    if (!calibrating_) return;
+    calibrating_ = false;
+    bgCal_ = calMax_;
+    QSettings().setValue("mirror/bgCal", bgCal_.name());
+    if (calBtn_) calBtn_->setText("Set from now");
+    refreshBgUi();
+    status_->setText(QString("Reactive only: background set to %1 (from %2 frames). Only the reactive "
+                             "part now reaches the PC.").arg(bgCal_.name()).arg(calFrames_));
+}
+
+void MainWindow::refreshBgUi() {
+    if (!bgSwatch_ || !bgLabel_ || !calBtn_) return;
+    const bool on = stripBgChk_ && stripBgChk_->isChecked();
+    paintSwatch(bgSwatch_, bgCal_.isValid() ? bgCal_ : QColor(Qt::black));
+    bgLabel_->setText(bgCal_.isValid() ? bgCal_.name() : QString("not set"));
+    bgLabel_->setStyleSheet(bgCal_.isValid() ? "" : "color:#e9a13b;");
+    calBtn_->setEnabled(on && !calibrating_);
+    bgSwatch_->setEnabled(on);
+    bgLabel_->setEnabled(on);
+}
+
 void MainWindow::repopulateBlacklist() {
     if (!blacklistCombo_) return;
     blacklistCombo_->clear();
@@ -616,15 +884,34 @@ void MainWindow::repopulateBlacklist() {
 }
 
 void MainWindow::pushIncluded() {
-    mirror_.setIncluded(gatherChecked());
-    if (mirroring_) status_->setText(QString("Mirroring WLED onto %1 device(s).").arg(mirror_.deviceCount()));
+    QList<int> inc = gatherChecked();
+    // Our NVAPI pipeline owns the GPU while it is open, so OpenRGB must neither drive it (included_)
+    // nor mode-switch it on a reopen (ownedExternally). Both are set from one place, so ownership is
+    // always consistent, and because included_ is consulted on every frame this takes effect at once
+    // — no mirror reopen, and no window where both writers hold the card.
+    if (gpuDriving_) {
+        for (int gi : gpuRowIndices()) inc.removeAll(gi);        // OpenRGB must not DRIVE it …
+        mirror_.setOwnedExternally(allGpuRowIndices());          // … nor mode-switch any GPU row
+    } else {
+        mirror_.setOwnedExternally({});                          // released: modes get re-asserted
+    }
+    mirror_.setIncluded(inc);
+    if (mirroring_) status_->setText(QString("Mirroring WLED onto %1 device(s)%2.")
+                                         .arg(mirror_.deviceCount())
+                                         .arg(gpuDriving_ ? " + the GPU direct" : ""));
 }
 
 void MainWindow::setDot(QLabel* dot, int level, const QString& hint) {
     if (!dot) return;
-    static const char* col[] = { "#888", "#e33", "#e9a13b", "#2a8f5a" };
-    dot->setStyleSheet(QString("color:%1; font-size:15px;").arg(col[qBound(0, level, 3)]));
+    // Colour AND glyph carry the state, so a red/green-deficient viewer can still read it: an idle
+    // ring, an error cross, a busy half-circle, a ready tick. The tooltip gives the detail.
+    static const char* col[]   = { "#888", "#e33", "#e9a13b", "#2a8f5a" };
+    static const char* glyph[] = { "○",    "✕",    "◐",       "✓"       };
+    const int i = qBound(0, level, 3);
+    dot->setText(glyph[i]);
+    dot->setStyleSheet(QString("color:%1; font-size:15px;").arg(col[i]));
     dot->setToolTip(hint);
+    dot->setAccessibleName(hint);
 }
 
 void MainWindow::refreshMirrorGate() {
@@ -658,7 +945,7 @@ void MainWindow::refresh() {
         openrgbReady_ = false;
         setDot(dotO_, 1, err);
         status_->setText("⚠  " + err + "   (retrying…)");
-        baseTitle_ = "wled-pc-rgb — connecting to OpenRGB…";
+        baseTitle_ = "WLED PC RGB — connecting to OpenRGB…";
         setWindowTitle(baseTitle_);
         building_ = false;
         refreshMirrorGate();
@@ -669,7 +956,7 @@ void MainWindow::refresh() {
         ++zeroRetries_;
         setDot(dotO_, 2, "OpenRGB connected, detecting devices…");
         status_->setText("OpenRGB connected but no devices yet — waiting for detection…");
-        baseTitle_ = "wled-pc-rgb — detecting devices…";
+        baseTitle_ = "WLED PC RGB — detecting devices…";
         setWindowTitle(baseTitle_);
         building_ = false;
         refreshMirrorGate();
@@ -691,12 +978,21 @@ void MainWindow::refresh() {
         const bool isKraken  = d.name.contains("kraken", Qt::CaseInsensitive);
         const bool canMirror = (!isDram && !d.leds.empty());
 
-        QString suffix;
-        if (isDram) suffix = "   (RAM — excluded for safety)";
-        else if (isKraken) suffix = "   (ring — driven directly over USB; untick to leave it to CAM)";
-        else if (isGpu) suffix = "   (needs OpenRGB as admin to light)";
-        auto* dItem = new QTreeWidgetItem(tree_, {d.name + suffix, "device"});
+        // Short badge in the Detail column; the full explanation goes in the row tooltip so the
+        // list stays scannable instead of carrying a sentence on every device name.
+        QString tag, detail;
+        if (isDram)        { tag = "skipped";
+                             detail = "RAM — excluded for safety. The app never drives the DIMMs, to protect the memory."; }
+        else if (isKraken) { tag = "direct (USB)";
+                             detail = "NZXT Kraken ring — driven directly over USB. Untick to leave it to NZXT CAM."; }
+        else if (isGpu)    { const bool ok = GpuDriver::supportedHere();
+                             tag = ok ? "direct (NVAPI)" : "needs admin";
+                             detail = ok ? "GPU — driven directly over NVAPI. No administrator rights needed."
+                                         : "GPU — needs OpenRGB run as administrator to light."; }
+        auto* dItem = new QTreeWidgetItem(tree_, {d.name, tag});
+        if (!detail.isEmpty()) { dItem->setToolTip(0, detail); dItem->setToolTip(1, detail); }
         dItem->setData(0, kDeviceIndexRole, di);
+        dItem->setData(0, kDeviceTypeRole, d.type);
         if (canMirror) {
             dItem->setFlags(dItem->flags() | Qt::ItemIsUserCheckable);
             dItem->setCheckState(0, Qt::Checked);   // all devices enabled by default, always
@@ -725,13 +1021,13 @@ void MainWindow::refresh() {
     setDot(dotO_, 3, QString("%1 devices · %2 mirror-able").arg(devices.size()).arg(mirrorable));
     status_->setText(QString("%1 devices (%2 mirror-able) · %3 zones · %4 LEDs — tick devices, then Mirror WLED")
                          .arg(devices.size()).arg(mirrorable).arg(zoneTotal).arg(ledTotal));
-    baseTitle_ = QString("wled-pc-rgb — %1 devices").arg(devices.size());
+    baseTitle_ = QString("WLED PC RGB %1 — %2 devices").arg(QCoreApplication::applicationVersion()).arg(devices.size());
     setWindowTitle(baseTitle_);
     building_ = false;
-    if (mirroring_) { pushIncluded(); syncKrakenDriving(); }   // a rescan re-ticks rows while building_
-                                                               // suppresses itemChanged, so reconcile the
-                                                               // Kraken pipeline here (e.g. a late-enumerated
-                                                               // Kraken, or one that failed to open earlier)
+    // A rescan re-ticks rows while building_ suppresses itemChanged, so both bespoke pipelines are
+    // reconciled here (e.g. a late-enumerated Kraken/GPU, or one that failed to open earlier).
+    // Sync before push, so an owned GPU is never momentarily included.
+    if (mirroring_) { syncKrakenDriving(); syncGpuDriving(); pushIncluded(); }
     refreshMirrorGate();
     maybeAutoMirror();
 

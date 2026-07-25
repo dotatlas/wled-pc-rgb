@@ -13,8 +13,9 @@ versions, read the [CHANGELOG](../CHANGELOG.md).
 - ✅ One **Brightness** control for the whole mirror (the app does not change WLED brightness).
 - ✅ Drive the **NZXT Kraken Elite ring** directly over USB — its own pipeline, with the same
   protocol as SignalRGB (a 512-byte report for each frame) — a smooth, per-LED mirror.
-- ✅ Smooth **GPU** RGB: the app rate-limits the slow devices (the GPU and coolers), so the
-  GPU no longer lags. This works for every GPU that OpenRGB supports.
+- ✅ Drive a supported **GPU** directly over **NVAPI**, on the GPU's own I2C bus — per-LED, smooth,
+  and with **no administrator rights**. (It does not use the motherboard SMBus, so there is no risk
+  to the RAM.) For other GPUs, the app rate-limits the OpenRGB path so it does not lag.
 - ✅ Position modes: *Spread* (the full strip on each device) and *Wrap* (the strip across
   all devices).
 - ✅ A zone size that you can set.
@@ -26,11 +27,11 @@ versions, read the [CHANGELOG](../CHANGELOG.md).
 
 ## Known issues
 
-- **The GPU RGB does not light on some systems, even after you elevate OpenRGB.** The GPU RGB is
-  on the motherboard SMBus, and the SMBus can need a full **PC restart** before OpenRGB detects
-  and drives the GPU. If the GPU stays dark after you use the "Elevate OpenRGB to admin" button,
-  restart the PC, start the app, and elevate again. (The mirror smoothness is fixed; this is
-  about the GPU lighting at all.) We are looking at how to make this more reliable.
+- **Only MSI Blackwell (RTX 50-series) GPUs use the direct pipeline.** The app has its own GPU
+  driver, which it uses for a card that it knows (at this time, the MSI RTX 5070 Ti Gaming Trio).
+  For any other card, the app uses OpenRGB, which needs administrator rights and does not give a
+  per-LED mirror. To add more cards, you must add their PCI identity and their LED layout. Help is
+  welcome — the pattern is in `core-cpp/app/src/gpu_driver.cpp`.
 
 ## Ideas — help is welcome
 

@@ -18,11 +18,24 @@ public:
     ~KrakenDriver();
     bool open();                                 // find + open the Kraken Elite V2; true if present
     bool isOpen() const { return dev_ != nullptr; }
-    void setRing(const QList<QColor>& leds);     // per-LED ring colours (resampled to 24, GRB)
+    void setRing(const QList<QColor>& leds);     // per-LED ring colours (bloomed from the origins, GRB)
     void setRingColor(const QColor& c);          // solid ring
     void close();
 
+    // How many points the pattern blooms outward from, spaced symmetrically around the circle.
+    // A ring is not a strip: laying the WLED strip around it linearly gives each lit pixel only
+    // one or two LEDs to grow across, so nothing appears to move. With N origins each one owns a
+    // wedge and the pattern spreads out from its centre, so growth is actually visible. Default 2.
+    void setOrigins(int n);
+    int  origins() const { return origins_; }
+    static int ringLeds();                       // ring LED count (the wire format's slot count)
+    static int maxOrigins();                     // ceiling that keeps the bloom from degenerating
+
+    // Diagnostic (CLI only): light exactly one ring slot, so the physical LED count can be counted.
+    void lightOneSlot(int slot, const QColor& c);
+
 private:
     hid_device_*  dev_ = nullptr;
+    int           origins_ = 2;
     QList<QColor> last_;                          // skip-unchanged
 };

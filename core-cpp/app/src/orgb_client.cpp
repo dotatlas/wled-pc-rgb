@@ -264,6 +264,30 @@ void OrgbMirror::close() {
     if (sock_) { delete sock_; sock_ = nullptr; }
     devs_.clear();
     lastHash_.clear(); lastAt_.clear();
+    ownedExt_.clear();   // ownership never outlives a session: a stale index would suppress the
+                         // mode-switch for whatever device holds that index next time.
+}
+
+// (Re)assert a cached device's host-controlled mode. Used when a device leaves external ownership:
+// open() deliberately skipped its mode-switch while it was owned, so without this OpenRGB would
+// drive it in whatever mode the other program left behind (typically: it stays dark).
+void OrgbMirror::assertMode(int deviceIndex) {
+    if (!sock_ || sock_->state() != QAbstractSocket::ConnectedState) return;
+    for (const Dev& d : devs_) {
+        if (d.idx != deviceIndex || d.modeRaw.isEmpty() || d.activeMode < 0) continue;
+        QByteArray p; put32(p, quint32(4 + 4 + d.modeRaw.size()));
+        put32(p, quint32(d.activeMode)); p.append(d.modeRaw);
+        sendPacket(*sock_, quint32(d.idx), CMD_UPDATE_MODE, p);
+        return;
+    }
+}
+
+void OrgbMirror::setOwnedExternally(const QList<int>& deviceIndices) {
+    // A device leaving ownership needs its mode re-asserted (it was skipped while owned), so a
+    // hand-back really does restore OpenRGB control rather than only resuming per-frame writes.
+    for (int prev : ownedExt_)
+        if (!deviceIndices.contains(prev)) assertMode(prev);
+    ownedExt_ = deviceIndices;
 }
 
 static inline quint32 packRGB(const QColor& c) {
@@ -327,13 +351,19 @@ bool OrgbMirror::open(const QString& host, quint16 port, QString* error) {
         // prefers "Direct" (per-LED, host-controlled) — this fixes devices (e.g. the GPU)
         // that default to "off". Coolers instead need "Static" (their ring lights only in a
         // single-colour mode). Switch to the wanted mode if the device has it.
+        // …but NOT for a device a bespoke pipeline currently owns: it is still cached (so it can be
+        // handed back later without a reopen) yet must be left completely alone, or this reopen
+        // would switch the mode of a card we are streaming to and silently stop it displaying.
+        const bool owned = ownedExt_.contains(int(i));
         const char* want = (d.type == 4) ? "Static" : "Direct";
         for (int m = 0; m < int(d.modes.size()); ++m) {
             if (d.modes[size_t(m)].name.compare(QLatin1String(want), Qt::CaseInsensitive) == 0
                     && !d.modes[size_t(m)].raw.isEmpty()) {
-                QByteArray p; put32(p, quint32(4 + 4 + d.modes[size_t(m)].raw.size()));
-                put32(p, quint32(m)); p.append(d.modes[size_t(m)].raw);
-                sendPacket(*s, quint32(i), CMD_UPDATE_MODE, p);   // activate the host-controlled mode
+                // Record the wanted mode either way, so it can be asserted later if this device is
+                // handed back; only SEND it when we don't own the device.
+                if (!owned) sendPacket(*s, quint32(i), CMD_UPDATE_MODE,
+                                       [&]{ QByteArray p; put32(p, quint32(4 + 4 + d.modes[size_t(m)].raw.size()));
+                                            put32(p, quint32(m)); p.append(d.modes[size_t(m)].raw); return p; }());
                 am = m; mraw = d.modes[size_t(m)].raw;
                 break;
             }

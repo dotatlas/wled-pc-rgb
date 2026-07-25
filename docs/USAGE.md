@@ -62,6 +62,53 @@ Mirror, and Quit.
       GPU → fans → mouse). The Kraken ring runs its own pipeline, so it always shows the full
       strip across its 24 LEDs (a moving, per-LED gradient).
   The two modes are exclusive. Turn both off for one average color on all devices.
+- **Ring origins** (Advanced) — for the NZXT Kraken ring only. The ring is a circle, not a line, so
+  the app grows the pattern out from a number of points at equal distances around the circle. Each
+  point grows outward and meets its neighbour half way. The default is **2** (two opposite points),
+  which gives each one 6 of the ring's 24 LEDs to grow across. Use **1** for one large bloom across
+  12 LEDs, or a larger number for more, smaller, faster blooms. The maximum is **6**: each origin
+  must keep a minimum of 2 LEDs in each direction, or the pattern becomes thin again.
+- **Reactive only** (Advanced) — for a music-reactive source that also shows an always-on background
+  color. LedFx is the usual example: you set a background color, and the reactive color grows over it.
+  With this control on, the app subtracts the background, so only the reactive part lights the PC.
+  The PC then goes dark between the beats.
+  **How to set it (this is a calibration):**
+    1. **Stop the music.** The strip must show the background color only.
+    2. Tick **Reactive only**. The app asks you to confirm, then it measures for about one second and
+       stores what it saw. The swatch and the hex code next to the box show the stored color.
+    3. Start the music. Only the reactive part now shows on the PC.
+  The app measures for a second, and not one single frame, because one frame includes the noise of
+  that moment. It keeps the highest value that it saw. This is on purpose: a value that is a little
+  too high costs almost nothing, but a value that is a little too low leaves a dim background.
+  If you change the background color later, click **Set from now** to store the new color. The app
+  keeps the stored color, so it is still correct after you close the app. The window title shows the
+  stored color while the control is on.
+  **If you still see a dim background**, make sure that **Match strip gamma** is on (see below). Your
+  strip does not show very low values at all, but the PC can show them, so a small remainder can be
+  visible on the PC and not on the strip.
+  You calibrate, and the app does not measure by itself, for two reasons. You know when the strip
+  shows the background only, so the stored color is exact. And LedFx multiplies the color by three
+  brightness values before it sends the data, so the color on the wire is not the color that you
+  selected in LedFx — you cannot type it in.
+  Two limits:
+    - If your source is at full brightness, the background and the reactive color mix together before
+      the app receives them (the data cannot go higher than 255). The bright peaks then show a little
+      darker than on the strip. To correct this, lower the brightness in LedFx, or raise the
+      **Brightness** slider.
+    - If the strip shows only the background color, the PC stays dark. There is no reactive part to
+      show. This is correct behavior, not a fault.
+  **For an exact result with no calibration:** in LedFx, make a second device (type DDP, the IP of
+  this PC, port 4048, 64 pixels). Give its virtual the same effect, then set its **Background
+  Brightness to 0**. The app selects this source automatically, and it has no background to remove.
+  Your WLED strip does not change. Windows Firewall must permit UDP 4048.
+- **Match strip gamma** (Advanced, on by default) — WLED sends the colors to the strip through a gamma
+  curve (2.2). The app now uses the same curve for the PC. This is necessary for two reasons:
+    - Without it, the PC is much brighter than the strip at low levels. The same color can be 5 times
+      brighter on the PC than on the strip.
+    - The strip shows all values from 1 to 14 as black. The PC can show them. So a very dark color, or
+      a small remainder from *Reactive only*, is visible on the PC but not on the strip.
+  With this control on, the PC matches the strip. The whole mirror becomes darker, so you can raise
+  the **Brightness** slider. Turn it off if you prefer the brighter, less accurate look.
 - **Brightness** — one slider for the whole mirror. It makes the PC colors darker or
   brighter. 100% shows the WLED colors as they are. It changes the PC only; it does not
   change the brightness of WLED. A black frame is off (0 stays 0).
@@ -85,13 +132,16 @@ Mirror, and Quit.
   one program can control the ring at a time, so **close NZXT CAM and SignalRGB** first — if
   they run, they fight the app for the ring. (The app does not control the Kraken LCD screen;
   CAM controls that.) To hand the ring to OpenRGB instead, re-add the Kraken in Advanced.
-- **GPU (RTX / all GPUs)** — OpenRGB finds it, but the RGB shows light only when you run
-  **OpenRGB as administrator**. GPU RGB is on the SMBus, and the SMBus needs administrator
-  rights. By default the app runs OpenRGB without administrator rights (an elevated OpenRGB
-  also reads the motherboard SMBus/DDR5, which is a risk to the RAM). The device list marks
-  the GPU row. To light the GPU, start OpenRGB as administrator before you start the app. This
-  is your choice. When it is on, the GPU is now smooth (the app no longer floods it — see
-  below).
+- **GPU** — the app drives a **supported** GPU itself, over **NVAPI** on the GPU's own I2C bus. It
+  shows a per-LED mirror (the logo and the fan strips) at about 30 frames each second. This needs
+  **no administrator rights**, and it does **not** use the motherboard SMBus, so there is no risk to
+  your RAM. The device list marks the row "driven directly over NVAPI". Untick the row to release
+  the GPU (for example, to give it back to SignalRGB or MSI Center).
+  At this time the app knows the **MSI RTX 5070 Ti Gaming Trio**. For any other card, the app uses
+  OpenRGB, and then the RGB shows light only if you run **OpenRGB as administrator** (the row says
+  so). The "Elevate OpenRGB to admin" button in Setup does this for you.
+  Check what your card can do with `wled_pc_rgb.exe --gpuinfo`. It only reads; it changes nothing.
+  The report goes to `%TEMP%\wled-pc-rgb-gpu.txt`.
 - **MSI Mystic Light / ARGB fans** — a motherboard ARGB zone can show 0 LEDs after an OpenRGB
   restart. Each JARGB header is one zone. In Advanced, set the **zone size** (the number of
   LEDs for each header — the default is **8**, for example an 8-LED JARGB fan). Then click
@@ -134,7 +184,13 @@ wled_pc_rgb.exe --mirror <seconds> [spread|wrap]              # run the mirror f
 wled_pc_rgb.exe --kraken <#rrggbb>                            # set the Kraken ring to one color
 wled_pc_rgb.exe --krakencycle [seconds]                       # sweep the ring through the colors
 wled_pc_rgb.exe --krakenspin [seconds]                        # a moving rainbow (the per-LED test)
+wled_pc_rgb.exe --gpuinfo                                     # GPU check — READ ONLY, changes nothing
+wled_pc_rgb.exe --gpu <#rrggbb>                               # set the GPU to one color
+wled_pc_rgb.exe --gpucycle [seconds]                          # sweep the GPU through the colors
+wled_pc_rgb.exe --gpuspin [seconds]                           # a moving rainbow on the GPU (per-LED test)
 wled_pc_rgb.exe --minimized                                   # start in the tray
 ```
+
+The GPU commands write their report to `%TEMP%\wled-pc-rgb-gpu.txt`.
 
 The app writes a device scan file to `%TEMP%\wled-pc-rgb-scan.txt` at each scan.

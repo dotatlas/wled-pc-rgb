@@ -57,6 +57,13 @@ public:
     bool open(const QString& host, quint16 port, QString* error);  // caches eligible devices (leds>0, not DRAM)
     void setIncluded(const QList<int>& deviceIndices);             // which detected devices to actually drive
     void setSkip(const QList<QString>& nameSubstrings) { skip_ = nameSubstrings; }  // never cache/drive these (a bespoke pipeline owns them)
+    // Devices a bespoke pipeline currently owns. They are still CACHED (so ownership can be handed
+    // back later without reopening) but open() must not send them its mode-update: included_ gates
+    // per-frame writes only, so without this a socket self-heal reopen would switch the mode of a
+    // card we are streaming to and silently break it. Any device LEAVING this set gets its
+    // host-controlled mode asserted, since that was skipped while it was owned.
+    // Always (re)state this immediately before open() — never let a previous session's value stand.
+    void setOwnedExternally(const QList<int>& deviceIndices);
     void apply(const QColor& color);
     void applyBuckets(const QList<QColor>& cols);   // stretch the whole strip across EACH device's LEDs
     void applyWrapped(const QList<QColor>& cols);    // distribute the strip ONCE across all devices in sequence
@@ -73,6 +80,7 @@ private:
     // (GPU/cooler) to ~30/15 FPS; (c) back off when the OpenRGB socket is congested. Fast
     // devices (mouse, motherboard) still send every changed frame.
     bool deviceDue(int idx, int type, quint32 payloadHash);
+    void assertMode(int deviceIndex);        // (re)send a cached device's host-controlled mode
 
     QTcpSocket* sock_ = nullptr;
     quint32 ver_ = 0;
@@ -81,4 +89,5 @@ private:
     std::map<int, quint32> lastHash_;        // device idx -> last payload hash sent (skip-unchanged)
     std::map<int, qint64>  lastAt_;          // slow device idx -> last send time (ms since epoch)
     QList<QString> skip_;                    // device-name substrings a bespoke pipeline owns
+    QList<int>     ownedExt_;                // device indices a bespoke pipeline owns right now
 };

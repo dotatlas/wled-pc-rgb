@@ -3,6 +3,70 @@
 This is a list of the important changes to **wled-pc-rgb**. The newest is first. Each
 version is a git tag (`vX.Y`).
 
+## v1.7
+
+- **A cleaner window for the public release.** The Advanced section is now grouped into labelled
+  panels (Zones, Kraken ring, Colour mapping, Music-reactive only, Hidden devices), so each control
+  says what it does. The three position modes (Same colour / Spread / Wrap) are now one set of
+  radio buttons, so the choice and the default are clear. The device list is a titled panel, and it
+  shows a short tag (for example "direct (NVAPI)") with the full note in a tooltip. The status
+  lights use a shape and a colour, so they read without colour. There is a new **About** window
+  (press the About button or F1) with the version, the licence and links to the project, the guide
+  and the bug tracker. The app has its own icon.
+- **New: "Reactive only"** in Advanced. If your source is music-reactive and also shows an always-on
+  background color (LedFx does this), the app can subtract the background, so only the reactive part
+  lights the PC.
+  You **calibrate** it, in three steps: stop the music, tick the box (the app asks you to confirm,
+  then measures for about a second), then start the music. A swatch and the hex code show what the app
+  stored. Use **Set from now** if you change the background color later. The app keeps the color.
+  The app measures for a second, and not one single frame, and it keeps the highest value that it saw.
+  A value that is a little too high costs almost nothing, but a value that is a little too low leaves
+  a dim background. The app also asks you to confirm, so it cannot store a color while music plays.
+  The subtraction is exact arithmetic, not a guess: LedFx adds the background to each pixel, and no
+  step after it changes the values, so the app subtracts the same amount. You calibrate instead of
+  typing the color, because LedFx multiplies the color by three brightness values before it sends the
+  data — so the color on the wire is not the color that you selected.
+  Two limits, which the guide explains: at full brightness the two colors mix before the app receives
+  them, so the peaks show a little darker; and if the strip shows only the background, the PC stays
+  dark, because there is no reactive part.
+- **New: "Match strip gamma"** in Advanced, on by default. WLED sends its colors to the strip through
+  a gamma curve (2.2), but the app sent them to the PC directly. So the PC was much brighter than the
+  strip at low levels — the same color could be 5 times brighter on the PC. Also, the strip shows every
+  value from 1 to 14 as black, but the PC showed them, so very dark colors were visible on the PC and
+  not on the strip. The app now uses the same curve as WLED, so the PC matches the strip. This is also
+  why a small remainder from *Reactive only* is not visible any more. The whole mirror is darker now,
+  so you can raise the **Brightness** slider. You can turn the control off.
+- **Removed the "Elevate OpenRGB to admin" button.** It is not necessary any more. The GPU has its
+  own driver, which needs no administrator rights (see below). The app now never asks for
+  administrator rights, and it never reads the motherboard SMBus.
+- **The GPU RGB works, and it needs no administrator rights.** Before, the GPU showed no light,
+  even with OpenRGB as administrator and after a restart. The reason: OpenRGB cannot control this
+  card. It gives the card only one LED zone with an empty update function, it has no per-LED
+  command set for MSI GPUs, and it does not send the "50 Series" enable command that a Blackwell
+  (RTX 50-series) card needs. Also, it waits 20 ms after each command, which gives about 7 frames
+  each second.
+  The app now controls the GPU itself, with the same method as SignalRGB: **NVAPI**, on the
+  **GPU's own I2C bus** — not the motherboard SMBus. This is important:
+    - It needs **no administrator rights**. The "Elevate OpenRGB" button is not necessary for the
+      GPU any more.
+    - It does **not** touch the motherboard SMBus or your DDR5 RAM. The app has no code for that
+      bus, so there is no risk to the memory.
+  The GPU shows a per-LED mirror (the MSI logo and the fan strips) at about 30 frames each second,
+  smooth. Test it with `--gpuinfo` (a safe read-only check), `--gpu #rrggbb`, or `--gpuspin`.
+  This works on the MSI RTX 5070 Ti Gaming Trio. Other cards continue to use OpenRGB.
+- **Safety.** All GPU commands go through one function that permits only the RGB controller's
+  address and only four known commands. The app never searches the bus, and never uses the monitor
+  (DDC) path. This keeps the voltage controller and the monitor memory out of reach.
+- **The Kraken ring pattern grows correctly now.** Before, the app put the WLED strip around the
+  ring in a line. A ring is a circle, not a line, so each lit part of the strip had only one LED to
+  grow across: the ring showed a thin pattern that did not seem to move. Now the pattern **grows
+  out from a number of points** ("origins"), at equal distances around the circle. Each origin
+  grows outward and meets its neighbour half way. With the default of 2 origins, each one has 6
+  LEDs to grow across, so the movement is easy to see. Set the number in **Advanced → Ring
+  origins** (1 to 6). The app keeps your choice. The limit is 6, because each origin must keep a
+  minimum of 2 LEDs in each direction: with more origins, each one has too few LEDs, and you get
+  the same thin pattern again.
+
 ## v1.6
 
 - **The Kraken Elite ring updates live again — with the correct protocol.** Version 1.5 was
