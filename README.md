@@ -1,10 +1,5 @@
 # wled-pc-rgb
 
-![license](https://img.shields.io/badge/license-MIT-blue)
-![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
-![built with Qt 6](https://img.shields.io/badge/built%20with-Qt%206-41CD52)
-![engine: OpenRGB](https://img.shields.io/badge/engine-OpenRGB-cc0000)
-
 **Show your WLED lights on your PC RGB devices in real time.** When your WLED strip shows
 an effect, a color, or a **LedFx audio-reactive** pattern, your PC fans, GPU, AIO, mouse,
 and motherboard show the same colors.
