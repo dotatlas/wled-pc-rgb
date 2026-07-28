@@ -9,11 +9,6 @@
 an effect, a color, or a **LedFx audio-reactive** pattern, your PC fans, GPU, AIO, mouse,
 and motherboard show the same colors.
 
-> **WLED is the master. The PC follows.**
-> The app reads the live output of WLED. Then it puts the same colors on your PC devices.
-> The app does not make its own effect. It shows only what WLED shows. Thus your room and
-> your PC stay the same.
-
 ---
 
 ## Requirements
@@ -44,27 +39,6 @@ The folder has Qt and all the DLLs in it. There is no installer. There is no PAT
 5. Close the window. The app continues in the tray.
 
 For all the controls, the use cases, and help, read **[docs/USAGE.md](docs/USAGE.md)**.
-
-## How it works
-
-The app has three parts. If one device driver stops, the other parts continue.
-
-```
-  WLED (ESP32)  ──live output──►  Java helper  ──frames (loopback)──►  C++ app (Qt)
-       ▲                          (WebSocket /                          │  maps colors
-       │  control (color only)     DDP / sACN)                          ▼  to devices
-       └───────────────────────────────────────────────  OpenRGB (SDK, TCP 6742)
-                                                              └─► fans · GPU · AIO · mouse
-```
-
-- **C++ app (Qt)** — the window, the tray, the device list, the color map, and the OpenRGB
-  client.
-- **Java helper** — it talks to WLED. It reads the live output and sends the frames to the
-  app. It also sends color commands to WLED. The app starts it automatically.
-- **OpenRGB** — it does the device input and output. The app talks to it over its network
-  SDK.
-
-For the full architecture, read **[docs/DESIGN.md](docs/DESIGN.md)**.
 
 ## Build from source
 
@@ -98,11 +72,6 @@ Some devices have special notes (read the details in [docs/USAGE.md](docs/USAGE.
 The developer made and tested the app with an MSI X870E board, an RTX 5070 Ti, an NZXT
 Kraken Elite, a Razer mouse, and an ESP32 with WLED. But the app is not limited to this
 hardware.
-
-## Roadmap
-
-Read **[docs/ROADMAP.md](docs/ROADMAP.md)**. The mirror is complete. The open ideas are
-extra options (in-house audio, and the NZXT Kraken LCD).
 
 ## How to contribute
 
