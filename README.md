@@ -16,27 +16,6 @@ and motherboard show the same colors.
 
 ---
 
-## Features
-
-- 🎨 **Real-time mirror** — the app shows the live output of WLED on each RGB device that
-  OpenRGB finds.
-- 🎵 **LedFx audio-reactive** — the app reads the output of WLED, so it also shows LedFx
-  patterns. For the lowest delay, send the LedFx data directly to this PC (DDP or
-  E1.31/sACN). The app selects the fastest source automatically.
-- ✅ **Per-device control** — select which devices mirror WLED. The app does not change the
-  other devices.
-- 🎚️ **Color controls** — set the PC brightness. Use the **flash gain** to make dim flashes
-  brighter. Use the **minimum brightness** to lift dim colors.
-- 🌑 **Off is off** — a black frame turns the PC devices off. Or select an **idle color**
-  for the app to show.
-- 🌈 **Position modes** — *Spread* puts the full strip on each device. *Wrap* puts the strip
-  one time across all devices, so the color moves from one device to the next.
-- 🚀 **Easy to start** — the app starts OpenRGB and its WLED helper for you. It stays in the
-  system tray. It can start at login or start small. It keeps your settings.
-- 🔒 **Safe** — the app does not write to the RAM or the SMBus. Thus there is no risk to the
-  memory. The app does not change the brightness of WLED.
-- 📦 **One folder** — download, unzip, and run. The license is MIT.
-
 ## Requirements
 
 | You need | Reason |
